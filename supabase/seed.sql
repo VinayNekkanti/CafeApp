@@ -1,0 +1,2 @@
+-- Seed data file (Empty)
+-- All cafe, operating hours, and crowd level data are managed directly within hosted Supabase database tables.
