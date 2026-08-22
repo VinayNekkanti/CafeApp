@@ -3,11 +3,12 @@ import { CafeHours } from '../types';
 /**
  * Parses a time string in "HH:MM:SS" or "HH:MM" format and returns minutes since midnight.
  */
-export function timeStringToMinutes(timeStr: string): number {
+export function timeStringToMinutes(timeStr?: string | null): number {
+  if (!timeStr || typeof timeStr !== 'string') return 0;
   const parts = timeStr.split(':');
   const hours = parseInt(parts[0] ?? '0', 10);
   const minutes = parseInt(parts[1] ?? '0', 10);
-  return hours * 60 + minutes;
+  return (isNaN(hours) ? 0 : hours) * 60 + (isNaN(minutes) ? 0 : minutes);
 }
 
 /**
@@ -44,8 +45,10 @@ export function getOpenStatus(hours: CafeHours[], testDate: Date = new Date()): 
   const currentDay = testDate.getDay();
   const currentMinutes = testDate.getHours() * 60 + testDate.getMinutes();
 
-  // Find today's hours
-  const todaysHours = hours.find((h) => h.day_of_week === currentDay);
+  // Find today's hours with valid opening and closing time strings
+  const todaysHours = hours.find(
+    (h) => h.day_of_week === currentDay && h.opening_time && h.closing_time
+  );
 
   if (!todaysHours) {
     // Closed all day today. Let's find when it opens next (check tomorrow, etc.)
@@ -86,7 +89,7 @@ function getNextOpeningStatus(hours: CafeHours[], currentDay: number): OpenStatu
   // Look ahead up to 7 days
   for (let i = 1; i <= 7; i++) {
     const nextDay = (currentDay + i) % 7;
-    const nextHours = hours.find((h) => h.day_of_week === nextDay);
+    const nextHours = hours.find((h) => h.day_of_week === nextDay && h.opening_time && h.closing_time);
     
     if (nextHours) {
       const openMin = timeStringToMinutes(nextHours.opening_time);
@@ -121,7 +124,7 @@ export function formatWeeklyHours(hours: CafeHours[]): { day: string; hoursStr: 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   
   return daysOfWeek.map((dayName, index) => {
-    const dayHours = hours.find((h) => h.day_of_week === index);
+    const dayHours = hours.find((h) => h.day_of_week === index && h.opening_time && h.closing_time);
     if (!dayHours) {
       return { day: dayName, hoursStr: 'Closed' };
     }

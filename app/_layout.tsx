@@ -67,15 +67,11 @@ function RootLayoutNav() {
     const inAuth = currentSegment === 'auth';
     const inOnboarding = currentSegment === 'onboarding';
 
-    if (!user) {
-      if (!inAuth) {
-        router.replace('/auth');
-      }
-    } else if (!isProfileComplete) {
+    if (user && !isProfileComplete) {
       if (!inOnboarding) {
         router.replace('/onboarding');
       }
-    } else {
+    } else if (user && isProfileComplete) {
       if (inAuth || inOnboarding) {
         router.replace('/(tabs)');
       }
