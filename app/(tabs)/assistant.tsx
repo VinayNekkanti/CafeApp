@@ -85,6 +85,7 @@ export default function AIAssistantScreen() {
           body: {
             query: userMessageText,
             location: { latitude: location.latitude, longitude: location.longitude },
+            history: messages.map((m) => ({ sender: m.sender, text: m.text })),
           },
         });
 
@@ -93,9 +94,9 @@ export default function AIAssistantScreen() {
         }
         responseData = data;
       } catch (edgeErr) {
-        console.warn('Edge function failed, running client-side mock AI recommendation:', edgeErr);
-        // Fallback to local parsing & ranking
-        responseData = runLocalAIEngine(userMessageText, cafesList, hoursMap, location.latitude, location.longitude);
+        console.warn('Edge function failed, running client-side AI recommendation:', edgeErr);
+        // Fallback to local parsing & ranking with history
+        responseData = runLocalAIEngine(userMessageText, cafesList, hoursMap, location.latitude, location.longitude, messages);
       }
 
       // 3. Update assistant bubble with actual recommendation results
@@ -133,60 +134,121 @@ export default function AIAssistantScreen() {
   };
 
   /**
-   * Mock parser to run recommendations client-side if Supabase Edge Functions aren't linked yet.
+   * AI recommendation engine with intent classification, preferences, and dynamic result counts.
    */
   const runLocalAIEngine = (
     query: string,
     cafesList: Cafe[],
     hoursMap: Record<string, CafeHours[]>,
     lat: number,
-    lon: number
+    lon: number,
+    historyMessages: Message[]
   ) => {
-    const qLower = query.toLowerCase();
+    const qTrim = query.trim().toLowerCase();
     
-    // Parse keywords
-    const prefs: StructuredPreferences = {};
-    if (qLower.includes('wifi') || qLower.includes('internet') || qLower.includes('wi-fi')) {
-      prefs.wifi_required = true;
+    // 1. Detect Intent
+    const generalGreetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', 'sup', 'yo', 'thanks', 'thank you', 'bye'];
+    const isGeneralChat = generalGreetings.includes(qTrim) || (qTrim.length <= 4 && !qTrim.includes('1') && !qTrim.includes('one'));
+
+    if (isGeneralChat) {
+      const prefs: StructuredPreferences = { intent: 'general_chat', max_results: 0 };
+      console.log('[AI Assistant DEBUG]');
+      console.log('Current user message:', query);
+      console.log('Parsed intent:', prefs.intent);
+      console.log('Parsed preferences:', prefs);
+      console.log('Requested result count:', 0);
+      console.log('Candidate cafe count:', cafesList.length);
+      console.log('Ranked cafe names: []');
+      console.log('Final returned cafe count: 0');
+
+      return {
+        preferences: prefs,
+        recommendations: [],
+        explanation: "Hi! Tell me what kind of study spot you're looking for — for example, quiet, close by, good Wi-Fi, or not too crowded.",
+      };
     }
-    if (qLower.includes('quiet') || qLower.includes('silent') || qLower.includes('peace')) {
+
+    // Check for modify_recommendation (e.g. "only give me 1", "just 1", "show 1", "give me 1")
+    const isModify = qTrim.includes('only') || qTrim.includes('just') || qTrim.startsWith('which');
+    const lastAssistantMsgWithRecs = [...historyMessages].reverse().find(m => m.sender === 'assistant' && m.recommendations && m.recommendations.length > 0);
+
+    const prefs: StructuredPreferences = {
+      intent: isModify && lastAssistantMsgWithRecs ? 'modify_recommendation' : 'recommend_cafe',
+    };
+
+    // Result count parsing
+    if (qTrim.includes('1') || qTrim.includes('one') || qTrim.includes('single') || qTrim.includes('closest cafe')) {
+      prefs.max_results = 1;
+    } else if (qTrim.includes('2') || qTrim.includes('two') || qTrim.includes('pair')) {
+      prefs.max_results = 2;
+    } else {
+      prefs.max_results = 3;
+    }
+
+    // Sort & filter parsing
+    if (qTrim.includes('closest') || qTrim.includes('nearest') || qTrim.includes('close')) {
+      prefs.sort_by = 'distance';
+    } else if (qTrim.includes('least crowded') || qTrim.includes('unpacked') || qTrim.includes('not crowded') || qTrim.includes('empty')) {
+      prefs.sort_by = 'crowd';
+      prefs.preferred_crowd_levels = ['Low', 'Moderate'];
+    } else if (qTrim.includes('quiet') || qTrim.includes('silent') || qTrim.includes('peace')) {
+      prefs.sort_by = 'quietness';
       prefs.quietness = 'Quiet';
     }
-    if (qLower.includes('vibe') || qLower.includes('aesthetic') || qLower.includes('cute') || qLower.includes('pretty')) {
-      prefs.aesthetics_priority = 'High';
-    }
-    if (qLower.includes('crowd') || qLower.includes('busy') || qLower.includes('packed') || qLower.includes('empty') || qLower.includes('full')) {
-      prefs.preferred_crowd_levels = ['Low', 'Moderate'];
-    }
-    if (qLower.includes('near') || qLower.includes('close') || qLower.includes('walk') || qLower.includes('minute')) {
-      prefs.max_distance = 15;
-      prefs.distance_unit = 'minutes';
+
+    if (qTrim.includes('wifi') || qTrim.includes('internet') || qTrim.includes('wi-fi')) {
+      prefs.wifi_required = true;
     }
 
-    // Rank cafes
-    const ranked = rankCafes(cafesList, hoursMap, lat, lon, prefs);
-    const top3 = ranked.slice(0, 3).map((r) => r.cafe);
+    let finalRecommendations: Cafe[] = [];
 
-    // Create explanation grounded strictly in the cafe data
-    let explanation = `Here are my top recommendations based on your preferences:\n\n`;
-    
-    if (top3.length === 0) {
-      explanation = `I scanned all cafes near UCI but couldn't find any that match your criteria. Try adjusting your preferences!`;
+    if (prefs.intent === 'modify_recommendation' && lastAssistantMsgWithRecs?.recommendations) {
+      let recsPool = [...lastAssistantMsgWithRecs.recommendations];
+      if (prefs.sort_by === 'distance') {
+        recsPool.sort((a, b) => {
+          const distA = calculateDistance(lat, lon, a.latitude, a.longitude);
+          const distB = calculateDistance(lat, lon, b.latitude, b.longitude);
+          return distA - distB;
+        });
+      }
+      const count = Math.min(prefs.max_results || 1, recsPool.length);
+      finalRecommendations = recsPool.slice(0, count);
     } else {
-      top3.forEach((c, index) => {
+      const ranked = rankCafes(cafesList, hoursMap, lat, lon, prefs);
+      finalRecommendations = ranked.map((r) => r.cafe);
+    }
+
+    console.log('[AI Assistant DEBUG]');
+    console.log('Current user message:', query);
+    console.log('Parsed intent:', prefs.intent);
+    console.log('Parsed preferences:', prefs);
+    console.log('Requested result count:', prefs.max_results);
+    console.log('Candidate cafe count:', cafesList.length);
+    console.log('Ranked cafe names:', finalRecommendations.map(c => c.name));
+    console.log('Final returned cafe count:', finalRecommendations.length);
+
+    // Build grounded explanation
+    let explanation = '';
+    if (finalRecommendations.length === 0) {
+      explanation = "I scanned all study spots near UCI but couldn't find any matching your exact criteria. Try broadening your request!";
+    } else if (finalRecommendations.length === 1) {
+      const c = finalRecommendations[0];
+      const crowd = c.current_crowd_level || 'Low';
+      const wifi = c.wifi_available ? `Wi-Fi (${c.wifi_quality || 'Available'})` : 'No Wi-Fi';
+      explanation = `Here is the top match for your request:\n\n1. **${c.name}** — **${crowd} crowd level**, **${wifi}**, located at **${c.address}**.\n\n💡 Tap on the card below to view full details or navigate there!`;
+    } else {
+      explanation = `Here are the top ${finalRecommendations.length} recommendations based on your request:\n\n`;
+      finalRecommendations.forEach((c, index) => {
         const crowd = c.current_crowd_level || 'Low';
-        const wifi = c.wifi_available ? `WiFi (${c.wifi_quality || 'Available'})` : 'No WiFi';
-        const quiet = c.avg_quietness && c.avg_quietness >= 2.4 ? 'Quiet 🤫' : c.avg_quietness && c.avg_quietness <= 1.6 ? 'Loud 🔊' : 'Moderate 🔉';
-        
-        explanation += `${index + 1}. **${c.name}** fits well because it has a **${crowd} crowd level**, offers **${wifi}**, and has a **${quiet}** atmosphere according to students.\n\n`;
+        const wifi = c.wifi_available ? `Wi-Fi (${c.wifi_quality || 'Available'})` : 'No Wi-Fi';
+        explanation += `${index + 1}. **${c.name}** — **${crowd} crowd level**, **${wifi}**.\n\n`;
       });
-      
-      explanation += `💡 Tap on any café card below to view details, verify opening hours, or check location routing!`;
+      explanation += `💡 Tap on any café card below to view details, verify hours, or check location routing!`;
     }
 
     return {
       preferences: prefs,
-      recommendations: top3,
+      recommendations: finalRecommendations,
       explanation,
     };
   };

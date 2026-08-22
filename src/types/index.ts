@@ -73,13 +73,19 @@ export interface LocationState {
   permissionGranted: boolean;
 }
 
+export type AssistantIntent = 'general_chat' | 'recommend_cafe' | 'modify_recommendation';
+
 export interface StructuredPreferences {
+  intent?: AssistantIntent;
+  max_results?: number;
   max_distance?: number;
   distance_unit?: 'miles' | 'minutes';
   wifi_required?: boolean;
   preferred_crowd_levels?: CrowdLevel[];
   quietness?: 'Loud' | 'Moderate' | 'Quiet';
   aesthetics_priority?: 'Low' | 'Medium' | 'High';
+  open_now?: boolean;
+  sort_by?: 'distance' | 'crowd' | 'quietness' | 'aesthetics' | 'rating' | 'default';
 }
 
 export interface RecommendationResult {

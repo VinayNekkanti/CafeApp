@@ -31,13 +31,34 @@ export function rankCafes(
         score: scoreResult.score,
         reasons: scoreResult.reasons,
         excluded: scoreResult.excluded,
+        distanceMiles: calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude),
       };
     })
     .filter((result) => !result.excluded);
 
-  // Sort by score descending
+  // Sorting logic based on prefs.sort_by
+  scoredCafes.sort((a, b) => {
+    if (prefs?.sort_by === 'distance') {
+      return a.distanceMiles - b.distanceMiles;
+    }
+    if (prefs?.sort_by === 'crowd') {
+      const crowdRank: Record<string, number> = { Low: 1, Moderate: 2, Busy: 3, Full: 4 };
+      const rankA = crowdRank[a.cafe.current_crowd_level || 'Low'] || 1;
+      const rankB = crowdRank[b.cafe.current_crowd_level || 'Low'] || 1;
+      if (rankA !== rankB) return rankA - rankB;
+    }
+    if (prefs?.sort_by === 'quietness') {
+      const quietA = Number(a.cafe.avg_quietness) || 0;
+      const quietB = Number(b.cafe.avg_quietness) || 0;
+      if (quietA !== quietB) return quietB - quietA;
+    }
+    return b.score - a.score;
+  });
+
+  const resultCount = Math.min(Math.max(prefs?.max_results ?? 3, 1), 3);
+
   return scoredCafes
-    .sort((a, b) => b.score - a.score)
+    .slice(0, resultCount)
     .map(({ cafe, score, reasons }) => ({ cafe, score, reasons }));
 }
 
