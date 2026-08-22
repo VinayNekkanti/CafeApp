@@ -21,6 +21,15 @@ export interface Cafe {
   crowd_updated_at?: string | null;
 }
 
+export interface CafeImage {
+  id?: string;
+  cafe_id: string;
+  storage_path: string;
+  display_order: number;
+  created_at?: string;
+  public_url?: string;
+}
+
 export interface CafeHours {
   id: string;
   cafe_id: string;

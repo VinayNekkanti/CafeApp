@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { Cafe, CafeHours } from '../types';
 import { THEME } from '../constants/theme';
@@ -79,6 +79,8 @@ export const CafeCard: React.FC<CafeCardProps> = ({
 
   const quietText = getQuietnessText(cafe.avg_quietness);
 
+  const [imageError, setImageError] = useState(false);
+
   return (
     <Pressable
       onPress={onPress}
@@ -93,8 +95,12 @@ export const CafeCard: React.FC<CafeCardProps> = ({
       ]}
     >
       {/* Cafe Image */}
-      {cafe.image_url ? (
-        <Image source={{ uri: cafe.image_url }} style={styles.image} />
+      {cafe.image_url && !imageError ? (
+        <Image
+          source={{ uri: cafe.image_url }}
+          style={styles.image}
+          onError={() => setImageError(true)}
+        />
       ) : (
         <View style={[styles.placeholderImage, { backgroundColor: themeColors.surfaceMuted }]}>
           <Ionicons name="cafe-outline" size={40} color={themeColors.textLight} />

@@ -33,6 +33,15 @@ create table if not exists public.cafes (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- Cafe Images table
+create table if not exists public.cafe_images (
+  id uuid default gen_random_uuid() primary key,
+  cafe_id uuid references public.cafes(id) on delete cascade not null,
+  storage_path text not null,
+  display_order integer not null default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
 -- Café Hours table (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
 create table if not exists public.cafe_hours (
   id uuid default gen_random_uuid() primary key,
@@ -98,6 +107,7 @@ from public.cafes c;
 -- Enable Row Level Security (RLS)
 alter table public.profiles enable row level security;
 alter table public.cafes enable row level security;
+alter table public.cafe_images enable row level security;
 alter table public.cafe_hours enable row level security;
 alter table public.cafe_crowd_status enable row level security;
 alter table public.study_environment_ratings enable row level security;
@@ -133,8 +143,9 @@ create policy "Users can update their own profile"
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
--- Public read access policies for cafes, hours, crowd status, and environment ratings
+-- Public read access policies for cafes, cafe_images, hours, crowd status, and environment ratings
 create policy "Allow public read access to cafes" on public.cafes for select using (true);
+create policy "Allow public read access to cafe_images" on public.cafe_images for select using (true);
 create policy "Allow public read access to cafe_hours" on public.cafe_hours for select using (true);
 create policy "Allow public read access to cafe_crowd_status" on public.cafe_crowd_status for select using (true);
 create policy "Allow public read access to study_environment_ratings" on public.study_environment_ratings for select using (true);

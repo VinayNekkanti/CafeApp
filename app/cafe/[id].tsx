@@ -39,6 +39,7 @@ export default function CafeProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const fetchData = async () => {
     if (!id) return;
@@ -212,8 +213,12 @@ export default function CafeProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Café Image Header */}
         <View style={styles.imageContainer}>
-          {cafe.image_url ? (
-            <Image source={{ uri: cafe.image_url }} style={styles.image} />
+          {cafe.image_url && !imageError ? (
+            <Image
+              source={{ uri: cafe.image_url }}
+              style={styles.image}
+              onError={() => setImageError(true)}
+            />
           ) : (
             <View style={[styles.placeholderImage, { backgroundColor: themeColors.surfaceMuted }]}>
               <Ionicons name="cafe-outline" size={60} color={themeColors.textLight} />
