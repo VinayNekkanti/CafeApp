@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as Location from 'expo-location';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { LocationState } from '../types';
 
 // UC Irvine fallback coordinates
@@ -41,7 +41,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         2000,
         { status: 'undetermined' } as Location.PermissionResponse
       );
-      
+
       if (permissionResult.status === 'granted') {
         const currentLoc = await withTimeout(
           Location.getCurrentPositionAsync({

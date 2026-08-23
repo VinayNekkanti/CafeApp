@@ -15,18 +15,22 @@ import {
 import { Cafe, CafeHours } from '../types';
 import { THEME } from '../constants/theme';
 import { calculateDistance, formatDistance } from '../utils/distance';
+import { openCafeDirections } from '../utils/directions';
+import { RouteResult } from '../services/routing';
 import { getOpenStatus } from '../utils/hours';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 // Conditional import to prevent crash on web
 let MapView: any;
 let Marker: any;
+let Polyline: any;
 let PROVIDER_GOOGLE: any;
 
 if (Platform.OS !== 'web') {
   const Maps = require('react-native-maps');
   MapView = Maps.default;
   Marker = Maps.Marker;
+  Polyline = Maps.Polyline;
   PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
 }
 
@@ -35,7 +39,11 @@ interface MapContainerProps {
   hours: Record<string, CafeHours[]>;
   userLat: number;
   userLon: number;
+  isSearching?: boolean;
+  activeRoute?: RouteResult | null;
   searchCoordinates?: { latitude: number; longitude: number; displayName?: string } | null;
+  favoriteIds?: string[];
+  onToggleFavorite?: (cafeId: string) => void;
   onSelectCafe: (cafeId: string) => void;
 }
 
@@ -48,7 +56,11 @@ export const MapContainer: React.FC<MapContainerProps> = ({
   hours,
   userLat,
   userLon,
+  isSearching = false,
+  activeRoute = null,
   searchCoordinates = null,
+  favoriteIds = [],
+  onToggleFavorite,
   onSelectCafe,
 }) => {
   const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
@@ -184,17 +196,30 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         <div style="font-family: system-ui, sans-serif; padding: 4px; color: ${colorScheme === 'dark' ? '#fff' : '#000'}; background: ${colorScheme === 'dark' ? '#1E120E' : '#fff'};">
           <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold;">${cafe.name}</h4>
           <p style="margin: 0 0 8px 0; font-size: 11px; color: #8C7C73;">${cafe.address}</p>
-          <button id="details-btn-${cafe.id}" style="
-            background-color: ${themeColors.primary};
-            color: #fff;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-          ">View Details</button>
+          <div style="display: flex; gap: 6px;">
+            <button id="details-btn-${cafe.id}" style="
+              flex: 1;
+              background-color: ${themeColors.surfaceMuted};
+              color: ${themeColors.text};
+              border: 1px solid ${themeColors.border};
+              padding: 6px 8px;
+              border-radius: 6px;
+              font-size: 11px;
+              font-weight: bold;
+              cursor: pointer;
+            ">View Details</button>
+            <button id="directions-btn-${cafe.id}" style="
+              flex: 1;
+              background-color: ${themeColors.primary};
+              color: #fff;
+              border: none;
+              padding: 6px 8px;
+              border-radius: 6px;
+              font-size: 11px;
+              font-weight: bold;
+              cursor: pointer;
+            ">Get Directions</button>
+          </div>
         </div>
       `;
 
@@ -205,6 +230,12 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         if (btn) {
           btn.addEventListener('click', () => {
             onSelectCafe(cafe.id);
+          });
+        }
+        const dirBtn = document.getElementById(`directions-btn-${cafe.id}`);
+        if (dirBtn) {
+          dirBtn.addEventListener('click', () => {
+            openCafeDirections(cafe, { latitude: userLat, longitude: userLon });
           });
         }
       });
@@ -372,20 +403,122 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     }
   }, [searchCoordinates, sdkLoaded, userLat, userLon]);
 
-  // Handle Search Coordinates on Native Map
+  // Handle Active Route Polyline & Bounds on Web Map
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !sdkLoaded || !mapRef.current) return;
+
+    const map = mapRef.current;
+    const maptilersdk = (window as any).maptilersdk;
+
+    if (!map || !maptilersdk) return;
+
+    // Remove existing layer and source if present
+    if (map.getLayer('route-layer')) {
+      map.removeLayer('route-layer');
+    }
+    if (map.getSource('route-source')) {
+      map.removeSource('route-source');
+    }
+
+    if (activeRoute && activeRoute.coordinates && activeRoute.coordinates.length > 0) {
+      const lineCoords = activeRoute.coordinates.map((c) => [c.longitude, c.latitude]);
+
+      map.addSource('route-source', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: lineCoords,
+          },
+        },
+      });
+
+      map.addLayer({
+        id: 'route-layer',
+        type: 'line',
+        source: 'route-source',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': themeColors.primary,
+          'line-width': 5,
+          'line-opacity': 0.9,
+        },
+      });
+
+      // Fit map viewport to include entire route
+      const bounds = new maptilersdk.LngLatBounds();
+      lineCoords.forEach((pt: any) => bounds.extend(pt as [number, number]));
+      map.fitBounds(bounds, { padding: 80, maxZoom: 16 });
+    }
+  }, [activeRoute, sdkLoaded, themeColors.primary]);
+
+  // Handle Active Route Camera Bounds on Native Map
   useEffect(() => {
     if (Platform.OS === 'web' || !mapRef.current) return;
 
-    const targetLat = searchCoordinates ? searchCoordinates.latitude : userLat;
-    const targetLon = searchCoordinates ? searchCoordinates.longitude : userLon;
+    if (activeRoute && activeRoute.coordinates && activeRoute.coordinates.length > 0) {
+      mapRef.current.fitToCoordinates(activeRoute.coordinates, {
+        edgePadding: { top: 80, right: 50, bottom: 180, left: 50 },
+        animated: true,
+      });
+    }
+  }, [activeRoute]);
 
-    mapRef.current.animateToRegion({
-      latitude: targetLat,
-      longitude: targetLon,
-      latitudeDelta: 0.02,
-      longitudeDelta: 0.02,
-    }, 1000);
-  }, [searchCoordinates, userLat, userLon]);
+  const prevSearchingRef = useRef(isSearching);
+
+  // Handle Search Coordinates or Reset on Map
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const wasSearching = prevSearchingRef.current;
+    prevSearchingRef.current = isSearching;
+
+    if (isSearching && cafes.length > 0) {
+      const topCafe = cafes[0];
+      if (Platform.OS !== 'web') {
+        mapRef.current.animateToRegion(
+          {
+            latitude: topCafe.latitude,
+            longitude: topCafe.longitude,
+            latitudeDelta: 0.015,
+            longitudeDelta: 0.015,
+          },
+          800
+        );
+      } else if (mapRef.current.flyTo) {
+        mapRef.current.flyTo({
+          center: [topCafe.longitude, topCafe.latitude],
+          zoom: 15,
+          essential: true,
+        });
+      }
+    } else if (wasSearching && !isSearching) {
+      const centerLat = userLat || 33.6405;
+      const centerLon = userLon || -117.8443;
+      if (Platform.OS !== 'web') {
+        mapRef.current.animateToRegion(
+          {
+            latitude: centerLat,
+            longitude: centerLon,
+            latitudeDelta: 0.04,
+            longitudeDelta: 0.04,
+          },
+          800
+        );
+      } else if (mapRef.current.flyTo) {
+        mapRef.current.flyTo({
+          center: [centerLon, centerLat],
+          zoom: 13,
+          essential: true,
+        });
+      }
+    }
+  }, [isSearching, cafes, userLat, userLon]);
 
   // Synchronize web markers active state when activeCafeIndex changes
   useEffect(() => {
@@ -449,10 +582,31 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                   ]}
                 >
                   <View style={styles.webCardHeader}>
-                    <Text style={[styles.webCardTitle, { color: themeColors.text }]}>{item.name}</Text>
-                    <Text style={[styles.webDistance, { color: themeColors.primaryLight }]}>
-                      {formatDistance(distance)}
-                    </Text>
+                    <Text style={[styles.webCardTitle, { color: themeColors.text }]} numberOfLines={1}>{item.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={[styles.webDistance, { color: themeColors.primaryLight }]}>
+                        {formatDistance(distance)}
+                      </Text>
+                      {onToggleFavorite && (
+                        <Pressable
+                          onPress={(e: any) => {
+                            if (e) {
+                              if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                              if (typeof e.preventDefault === 'function') e.preventDefault();
+                            }
+                            console.log('[Map Card Debug] Favorite pressed:', item.id, item.name);
+                            onToggleFavorite(item.id);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name={favoriteIds.includes(item.id) ? 'heart' : 'heart-outline'}
+                            size={18}
+                            color={favoriteIds.includes(item.id) ? '#EF4444' : themeColors.textMuted}
+                          />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
                   <Text style={[styles.webCardAddress, { color: themeColors.textMuted }]} numberOfLines={1}>
                     {item.address}
@@ -540,9 +694,30 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                     <Text style={[styles.cardTitle, { color: themeColors.text }]} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <Text style={[styles.cardDistance, { color: themeColors.primaryLight }]}>
-                      {formatDistance(distance)}
-                    </Text>
+                    <View style={styles.cardHeaderRight}>
+                      <Text style={[styles.cardDistance, { color: themeColors.primaryLight }]}>
+                        {formatDistance(distance)}
+                      </Text>
+                      {onToggleFavorite && (
+                        <Pressable
+                          onPress={(e: any) => {
+                            if (e) {
+                              if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                              if (typeof e.preventDefault === 'function') e.preventDefault();
+                            }
+                            console.log('[Map Card Debug] Favorite pressed:', item.id, item.name);
+                            onToggleFavorite(item.id);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name={favoriteIds.includes(item.id) ? 'heart' : 'heart-outline'}
+                            size={18}
+                            color={favoriteIds.includes(item.id) ? '#EF4444' : themeColors.textMuted}
+                          />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
                   <Text style={[styles.cardAddress, { color: themeColors.textMuted }]} numberOfLines={1}>
                     {item.address}
@@ -627,6 +802,15 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           pinColor="#3B82F6"
         />
 
+        {/* Active Route Polyline */}
+        {activeRoute && activeRoute.coordinates && activeRoute.coordinates.length > 0 && Polyline && (
+          <Polyline
+            coordinates={activeRoute.coordinates}
+            strokeColor={themeColors.primary}
+            strokeWidth={5}
+          />
+        )}
+
         {/* Searched Location Marker */}
         {searchCoordinates && (
           <Marker
@@ -705,9 +889,34 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                   <Text style={[styles.cardTitle, { color: themeColors.text }]} numberOfLines={1}>
                     {item.name}
                   </Text>
-                  <Text style={[styles.cardDistance, { color: themeColors.primaryLight }]}>
-                    {formatDistance(distance)}
-                  </Text>
+                  <View style={styles.cardHeaderRight}>
+                    <Text style={[styles.cardDistance, { color: themeColors.primaryLight }]}>
+                      {formatDistance(distance)}
+                    </Text>
+                    {onToggleFavorite && (
+                      <Pressable
+                        onPress={(e: any) => {
+                          if (e) {
+                            if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                            if (typeof e.preventDefault === 'function') e.preventDefault();
+                          }
+                          console.log('[Map Card Debug] Favorite pressed:', item.id, item.name);
+                          onToggleFavorite(item.id);
+                        }}
+                        style={({ pressed }) => [
+                          styles.mapCardHeartBtn,
+                          pressed && { opacity: 0.7 },
+                        ]}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons
+                          name={favoriteIds.includes(item.id) ? 'heart' : 'heart-outline'}
+                          size={18}
+                          color={favoriteIds.includes(item.id) ? '#EF4444' : themeColors.textMuted}
+                        />
+                      </Pressable>
+                    )}
+                  </View>
                 </View>
                 <Text style={[styles.cardAddress, { color: themeColors.textMuted }]} numberOfLines={1}>
                   {item.address}
@@ -789,6 +998,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
+  },
+  cardHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mapCardHeartBtn: {
+    padding: 2,
   },
   cardTitle: {
     fontSize: THEME.typography.sizes.sm,
@@ -897,4 +1114,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-export default MapContainer;
+export default React.memo(MapContainer);

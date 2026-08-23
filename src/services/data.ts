@@ -1,4 +1,4 @@
-import { Cafe, CafeHours, CafeImage, StudyEnvironmentRating } from '../types';
+import { Cafe, CafeHours, CafeImage, StudyEnvironmentRating, CafeReview } from '../types';
 import { supabase } from './supabase';
 
 /**
@@ -6,8 +6,19 @@ import { supabase } from './supabase';
  */
 export function getCafeImageUrl(storagePath: string): string {
   if (!storagePath) return '';
-  const { data } = supabase.storage.from('cafe-images').getPublicUrl(storagePath);
-  return data?.publicUrl || '';
+  if (storagePath.startsWith('http://') || storagePath.startsWith('https://')) {
+    return storagePath;
+  }
+
+  // Clean leading slash or bucket name duplication
+  let cleanPath = storagePath.startsWith('/') ? storagePath.slice(1) : storagePath;
+  if (cleanPath.startsWith('cafe-images/')) {
+    cleanPath = cleanPath.slice('cafe-images/'.length);
+  }
+
+  const { data } = supabase.storage.from('cafe-images').getPublicUrl(cleanPath);
+  const publicUrl = data?.publicUrl || '';
+  return publicUrl;
 }
 
 /**
@@ -60,20 +71,24 @@ export async function getCafes(): Promise<Cafe[]> {
       .select('cafe_id, storage_path, display_order')
       .order('display_order', { ascending: true });
 
+    console.log('[DEBUG getCafes] fetched cafe_images rows:', imagesData, 'error:', imagesError);
+
     if (imagesError) {
       console.warn('Note on fetching cafe_images from Supabase:', imagesError.message);
     } else if (imagesData && imagesData.length > 0) {
       const mainImagesMap: Record<string, string> = {};
       
-      // Since sorted by display_order ASC, the first entry per cafe_id is display_order = 0 (or lowest order)
+      // Prioritize display_order = 0 or lowest display_order
       imagesData.forEach((img: { cafe_id: string; storage_path: string; display_order: number }) => {
-        if (!mainImagesMap[img.cafe_id] && img.storage_path) {
+        if ((img.display_order === 0 || !mainImagesMap[img.cafe_id]) && img.storage_path) {
           const publicUrl = getCafeImageUrl(img.storage_path);
           if (publicUrl) {
             mainImagesMap[img.cafe_id] = publicUrl;
           }
         }
       });
+
+      console.log('[DEBUG getCafes] mainImagesMap:', mainImagesMap);
 
       cafes.forEach((cafe) => {
         if (mainImagesMap[cafe.id]) {
@@ -83,6 +98,15 @@ export async function getCafes(): Promise<Cafe[]> {
     }
   } catch (imgErr) {
     console.warn('Could not resolve cafe storage images (falling back to default URLs/placeholders):', imgErr);
+  }
+
+  const gridCafe = cafes.find(c => c.name.toLowerCase().includes('grid'));
+  if (gridCafe) {
+    console.log('[DEBUG Grid Cafe] Final resolved cafe object:', {
+      id: gridCafe.id,
+      name: gridCafe.name,
+      image_url: gridCafe.image_url
+    });
   }
 
   return cafes;
@@ -168,7 +192,7 @@ export async function getFavorites(userId: string): Promise<string[]> {
     .eq('user_id', userId);
 
   if (error) {
-    console.error('Error fetching favorites:', error.message);
+    console.error('[Favorites Debug] Error fetching favorites:', error.message);
     throw new Error(error.message);
   }
 
@@ -178,24 +202,75 @@ export async function getFavorites(userId: string): Promise<string[]> {
 /**
  * Toggle favorite status
  */
-export async function toggleFavorite(userId: string, cafeId: string, isFav: boolean): Promise<void> {
-  if (isFav) {
+export async function toggleFavorite(userId: string, cafeId: string, shouldFavorite: boolean): Promise<void> {
+  // Verify authenticated user from Supabase Auth at submit time
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    console.error('[Favorites Debug] Auth check failed at toggle time:', authError);
+    throw new Error('You must be signed in to save favorite spots.');
+  }
+
+  const activeUserId = user.id;
+  console.log(`[Favorites Debug] User UUID: ${activeUserId}, Cafe UUID: ${cafeId}, Action: ${shouldFavorite ? 'INSERT' : 'DELETE'}`);
+
+  if (shouldFavorite) {
     const { error } = await supabase
       .from('favorites')
-      .insert({ user_id: userId, cafe_id: cafeId });
+      .insert({ user_id: activeUserId, cafe_id: cafeId });
+
     if (error) {
-      console.error('Error adding favorite:', error.message);
+      console.error('[Favorites Debug] Error adding favorite:', error.message);
       throw new Error(error.message);
     }
   } else {
     const { error } = await supabase
       .from('favorites')
       .delete()
-      .eq('user_id', userId)
+      .eq('user_id', activeUserId)
       .eq('cafe_id', cafeId);
+
     if (error) {
-      console.error('Error removing favorite:', error.message);
+      console.error('[Favorites Debug] Error removing favorite:', error.message);
       throw new Error(error.message);
     }
+  }
+}
+
+/**
+ * Submit a free-text review for a cafe
+ */
+export async function submitCafeReview(cafeId: string, reviewText: string): Promise<void> {
+  const cleanText = reviewText.trim();
+  if (!cleanText) {
+    throw new Error('Review text cannot be empty.');
+  }
+
+  // Verify authenticated user at submit time directly from Supabase Auth
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    console.error('[RLS Debug] Authentication check failed at submit time:', authError);
+    throw new Error('You must be signed in to submit a review.');
+  }
+
+  const authenticatedUserUuid = user.id;
+  const outgoingUserId = user.id;
+
+  // Log ONLY current authenticated user UUID and outgoing user_id for comparison
+  console.log(`[RLS Debug] Authenticated user UUID: ${authenticatedUserUuid}`);
+  console.log(`[RLS Debug] Inserted user_id: ${outgoingUserId}`);
+  console.log(`[RLS Debug] Do UUIDs match? ${authenticatedUserUuid === outgoingUserId}`);
+
+  const { error } = await supabase
+    .from('cafe_reviews')
+    .insert({
+      cafe_id: cafeId,
+      user_id: outgoingUserId,
+      review_text: cleanText,
+    });
+
+  if (error) {
+    console.error('Supabase submitCafeReview failed:', error.message);
+    throw new Error(error.message);
   }
 }

@@ -110,7 +110,7 @@ export const RatingModal: React.FC<RatingModalProps> = ({
             </View>
             <Text style={[styles.starDesc, { color: themeColors.textLight }]}>
               {aesthetics === 1 && 'Dull / Distracting'}
-              {aesthetics === 2 && 'Average Study Spot'}
+              {aesthetics === 2 && 'Average FindMyCafe Spot'}
               {aesthetics === 3 && 'Nice Vibe / Cozy'}
               {aesthetics === 4 && 'Inspiring / Modern Design'}
               {aesthetics === 5 && 'Perfect Study Paradise'}

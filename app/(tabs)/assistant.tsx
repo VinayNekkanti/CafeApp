@@ -20,6 +20,7 @@ import { getCafes, getCafeHoursBatch } from '../../src/services/data';
 import { Cafe, CafeHours, StructuredPreferences } from '../../src/types';
 import { THEME } from '../../src/constants/theme';
 import { rankCafes } from '../../src/utils/recommendation';
+import { calculateDistance } from '../../src/utils/distance';
 import CafeCard from '../../src/components/CafeCard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -79,7 +80,7 @@ export default function AIAssistantScreen() {
 
       let responseData: { preferences: StructuredPreferences; recommendations: Cafe[]; explanation: string };
 
-      // 2. Attempt Edge Function invocation
+      // 2. Attempt Edge Function invocation with fallback
       try {
         const { data, error } = await supabase.functions.invoke('recommend-cafes', {
           body: {
@@ -95,8 +96,7 @@ export default function AIAssistantScreen() {
         responseData = data;
       } catch (edgeErr) {
         console.warn('Edge function failed, running client-side AI recommendation:', edgeErr);
-        // Fallback to local parsing & ranking with history
-        responseData = runLocalAIEngine(userMessageText, cafesList, hoursMap, location.latitude, location.longitude, messages);
+        responseData = await runLocalAIEngine(userMessageText, cafesList, hoursMap, location.latitude, location.longitude, messages);
       }
 
       // 3. Update assistant bubble with actual recommendation results
@@ -134,9 +134,9 @@ export default function AIAssistantScreen() {
   };
 
   /**
-   * AI recommendation engine with intent classification, preferences, and dynamic result counts.
+   * Client-side fallback rule-based NLP ranking engine
    */
-  const runLocalAIEngine = (
+  const runLocalAIEngine = async (
     query: string,
     cafesList: Cafe[],
     hoursMap: Record<string, CafeHours[]>,
@@ -145,16 +145,13 @@ export default function AIAssistantScreen() {
     historyMessages: Message[]
   ) => {
     const qTrim = query.trim().toLowerCase();
-    
-    // 1. Detect Intent
-    const generalGreetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', 'sup', 'yo', 'thanks', 'thank you', 'bye'];
-    const isGeneralChat = generalGreetings.includes(qTrim) || (qTrim.length <= 4 && !qTrim.includes('1') && !qTrim.includes('one'));
 
-    if (isGeneralChat) {
-      const prefs: StructuredPreferences = { intent: 'general_chat', max_results: 0 };
+    // Check greeting / non-search message
+    if (qTrim === 'hi' || qTrim === 'hello' || qTrim === 'hey' || qTrim.includes('what can you do')) {
+      const prefs: StructuredPreferences = { intent: 'general_chat' };
       console.log('[AI Assistant DEBUG]');
       console.log('Current user message:', query);
-      console.log('Parsed intent:', prefs.intent);
+      console.log('Parsed intent: greeting');
       console.log('Parsed preferences:', prefs);
       console.log('Requested result count:', 0);
       console.log('Candidate cafe count:', cafesList.length);
@@ -164,7 +161,7 @@ export default function AIAssistantScreen() {
       return {
         preferences: prefs,
         recommendations: [],
-        explanation: "Hi! Tell me what kind of study spot you're looking for — for example, quiet, close by, good Wi-Fi, or not too crowded.",
+        explanation: "Hi! Tell me what kind of FindMyCafe location you're looking for — for example, quiet, close by, good Wi-Fi, or not too crowded.",
       };
     }
 
@@ -230,7 +227,7 @@ export default function AIAssistantScreen() {
     // Build grounded explanation
     let explanation = '';
     if (finalRecommendations.length === 0) {
-      explanation = "I scanned all study spots near UCI but couldn't find any matching your exact criteria. Try broadening your request!";
+      explanation = "I scanned all FindMyCafe locations near UCI but couldn't find any matching your exact criteria. Try broadening your request!";
     } else if (finalRecommendations.length === 1) {
       const c = finalRecommendations[0];
       const crowd = c.current_crowd_level || 'Low';

@@ -31,58 +31,118 @@ export default function AuthScreen() {
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const toggleMode = () => {
+    if (loading) return;
+    setIsLogin(!isLogin);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+  };
 
   const handleGoogleAuth = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
     setGoogleLoading(true);
     try {
       await signInWithGoogle();
     } catch (err: any) {
-      Alert.alert('Google Sign In Failed', err.message || 'Could not authenticate with Google.');
+      console.error('Google Auth Error:', { message: err?.message, status: err?.status });
+      const msg = err?.message || 'Could not authenticate with Google.';
+      setErrorMessage(msg);
+      Alert.alert('Google Sign In Failed', msg);
     } finally {
       setGoogleLoading(false);
     }
   };
 
   const handleAuth = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Validation Error', 'Please fill in all required fields.');
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail || !password) {
+      setErrorMessage('Please enter both your email address and password.');
       return;
     }
 
     if (!isLogin && !displayName.trim()) {
-      Alert.alert('Validation Error', 'Please provide a display name.');
+      setErrorMessage('Please provide a display name.');
       return;
     }
 
     setLoading(true);
     try {
       if (isLogin) {
-        // Sign In
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password.trim(),
+        // Sign In using Supabase signInWithPassword
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: password,
         });
-        if (error) throw error;
+
+        if (error) {
+          console.error('Supabase signInWithPassword error:', {
+            message: error.message,
+            status: error.status,
+            name: error.name,
+          });
+
+          let formattedMsg = error.message;
+          const lowerMsg = error.message.toLowerCase();
+
+          if (lowerMsg.includes('invalid login credentials')) {
+            formattedMsg = 'Invalid email or password. Note: If you registered with Google OAuth, please use "Continue with Google".';
+          } else if (lowerMsg.includes('email not confirmed')) {
+            formattedMsg = 'Email address not confirmed. Please check your inbox to verify your email before signing in.';
+          } else if (lowerMsg.includes('user not found') || lowerMsg.includes('no user')) {
+            formattedMsg = 'No account found with this email address.';
+          }
+
+          setErrorMessage(formattedMsg);
+          Alert.alert('Sign In Failed', formattedMsg);
+          return;
+        }
       } else {
-        // Sign Up
+        // Sign Up using Supabase signUp
         const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password: password.trim(),
+          email: cleanEmail,
+          password: password,
           options: {
             data: {
               display_name: displayName.trim(),
             },
           },
         });
-        if (error) throw error;
-        
-        Alert.alert(
-          'Account Created',
-          'Your student study spot account has been successfully created!'
-        );
+
+        if (error) {
+          console.error('Supabase signUp error:', {
+            message: error.message,
+            status: error.status,
+            name: error.name,
+          });
+
+          setErrorMessage(error.message);
+          Alert.alert('Sign Up Failed', error.message);
+          return;
+        }
+
+        if (data?.user && (!data?.session)) {
+          setSuccessMessage('Account created! Please check your email inbox to confirm your account.');
+          Alert.alert(
+            'Confirmation Required',
+            'Your account has been created. Please check your email to verify your address before logging in.'
+          );
+        } else {
+          setSuccessMessage('Your FindMyCafe account has been successfully created!');
+        }
       }
     } catch (err: any) {
-      Alert.alert('Authentication Failed', err.message || 'An unexpected error occurred.');
+      console.error('Unexpected Auth Error:', { message: err?.message });
+      const unexpectedMsg = err?.message || 'An unexpected error occurred.';
+      setErrorMessage(unexpectedMsg);
+      Alert.alert('Authentication Failed', unexpectedMsg);
     } finally {
       setLoading(false);
     }
@@ -104,9 +164,24 @@ export default function AuthScreen() {
               {isLogin ? 'Welcome Back' : 'Create Account'}
             </Text>
             <Text style={[styles.subtitle, { color: themeColors.textLight }]}>
-              {isLogin ? 'Sign in to rate café study vibes' : 'Join fellow UCI students to find study spots'}
+              {isLogin ? 'Sign in to rate café study vibes' : 'Join fellow UCI students on FindMyCafe'}
             </Text>
           </View>
+
+          {/* Inline Banners for Error or Success */}
+          {errorMessage && (
+            <View style={[styles.banner, styles.errorBanner]}>
+              <Ionicons name="alert-circle" size={18} color="#D32F2F" style={styles.bannerIcon} />
+              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+            </View>
+          )}
+
+          {successMessage && (
+            <View style={[styles.banner, styles.successBanner]}>
+              <Ionicons name="checkmark-circle" size={18} color="#2E7D32" style={styles.bannerIcon} />
+              <Text style={styles.successBannerText}>{successMessage}</Text>
+            </View>
+          )}
 
           {/* Google OAuth Button */}
           <Pressable
@@ -148,7 +223,10 @@ export default function AuthScreen() {
                     placeholderTextColor={themeColors.textLight}
                     style={[styles.input, { color: themeColors.text }]}
                     value={displayName}
-                    onChangeText={setDisplayName}
+                    onChangeText={(val) => {
+                      setDisplayName(val);
+                      if (errorMessage) setErrorMessage(null);
+                    }}
                     autoCapitalize="words"
                     editable={!loading}
                   />
@@ -165,7 +243,10 @@ export default function AuthScreen() {
                   placeholderTextColor={themeColors.textLight}
                   style={[styles.input, { color: themeColors.text }]}
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(val) => {
+                    setEmail(val);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
                   autoCapitalize="none"
                   keyboardType="email-address"
                   editable={!loading}
@@ -182,7 +263,10 @@ export default function AuthScreen() {
                   placeholderTextColor={themeColors.textLight}
                   style={[styles.input, { color: themeColors.text }]}
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(val) => {
+                    setPassword(val);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
                   secureTextEntry
                   autoCapitalize="none"
                   editable={!loading}
@@ -216,7 +300,7 @@ export default function AuthScreen() {
             <Text style={[styles.footerText, { color: themeColors.textMuted }]}>
               {isLogin ? "Don't have an account?" : 'Already have an account?'}
             </Text>
-            <Pressable onPress={() => !loading && setIsLogin(!isLogin)} style={styles.toggleBtn}>
+            <Pressable onPress={toggleMode} style={styles.toggleBtn}>
               <Text style={[styles.toggleBtnText, { color: themeColors.primaryLight }]}>
                 {isLogin ? 'Create one' : 'Sign in'}
               </Text>
@@ -247,6 +331,38 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 3,
+  },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: THEME.spacing.sm + 2,
+    borderRadius: THEME.roundness.md,
+    marginBottom: THEME.spacing.md,
+  },
+  errorBanner: {
+    backgroundColor: '#FFEBEE',
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+  },
+  errorBannerText: {
+    color: '#C62828',
+    fontSize: THEME.typography.sizes.xs,
+    flex: 1,
+    fontWeight: '500',
+  },
+  successBanner: {
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+  },
+  successBannerText: {
+    color: '#2E7D32',
+    fontSize: THEME.typography.sizes.xs,
+    flex: 1,
+    fontWeight: '500',
+  },
+  bannerIcon: {
+    marginRight: THEME.spacing.xs + 2,
   },
   logoContainer: {
     alignItems: 'center',

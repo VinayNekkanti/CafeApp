@@ -11,7 +11,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocation } from '../../src/context/LocationContext';
-import { getCafes, getCafeHoursBatch, getFavorites } from '../../src/services/data';
+import { getCafes, getCafeHoursBatch, getFavorites, toggleFavorite } from '../../src/services/data';
 import { Cafe, CafeHours } from '../../src/types';
 import { THEME } from '../../src/constants/theme';
 import CafeCard from '../../src/components/CafeCard';
@@ -51,6 +51,17 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleRemoveFavorite = async (cafeId: string) => {
+    if (!user) return;
+    setFavoriteCafes((prev) => prev.filter((c) => c.id !== cafeId));
+    try {
+      await toggleFavorite(user.id, cafeId, false);
+    } catch (err) {
+      console.error('Failed to remove favorite:', err);
+      fetchFavorites();
+    }
+  };
+
   // Re-fetch favorites when screen gains focus
   useFocusEffect(
     useCallback(() => {
@@ -81,7 +92,7 @@ export default function ProfileScreen() {
             </View>
             <Text style={[styles.authTitle, { color: themeColors.text }]}>Save Your Favorites</Text>
             <Text style={[styles.authSubtitle, { color: themeColors.textMuted }]}>
-              Create a free student profile to save your favorite Irvine study spots, rate environment noise, and help your peers.
+              Create a free student profile to save your favorite Irvine FindMyCafe locations, rate environment noise, and help your peers.
             </Text>
             <Pressable
               onPress={() => router.push('/auth')}
@@ -136,7 +147,7 @@ export default function ProfileScreen() {
       {/* Favorites Title */}
       <View style={styles.sectionHeader}>
         <Ionicons name="heart" size={18} color="#EF4444" />
-        <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Saved Study Spots</Text>
+        <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Saved FindMyCafe Locations</Text>
       </View>
 
       {/* Favorites List */}
@@ -153,6 +164,8 @@ export default function ProfileScreen() {
               hours={hours[item.id] || []}
               userLat={location.latitude}
               userLon={location.longitude}
+              isFavorite={true}
+              onToggleFavorite={() => handleRemoveFavorite(item.id)}
               onPress={() => router.push(`/cafe/${item.id}`)}
             />
           )}
@@ -167,7 +180,7 @@ export default function ProfileScreen() {
                 onPress={() => router.push('/(tabs)')}
                 style={[styles.exploreBtn, { backgroundColor: themeColors.primary }]}
               >
-                <Text style={styles.exploreBtnText}>Explore Study Spots</Text>
+                <Text style={styles.exploreBtnText}>Explore FindMyCafe</Text>
               </Pressable>
             </View>
           }

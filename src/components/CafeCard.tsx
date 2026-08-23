@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Cafe, CafeHours } from '../types';
 import { THEME } from '../constants/theme';
 import { calculateDistance, formatDistance, estimateWalkingTime } from '../utils/distance';
+import { openCafeDirections } from '../utils/directions';
 import { getOpenStatus } from '../utils/hours';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -11,6 +13,8 @@ interface CafeCardProps {
   hours: CafeHours[];
   userLat: number;
   userLon: number;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
   onPress: () => void;
 }
 
@@ -19,8 +23,11 @@ export const CafeCard: React.FC<CafeCardProps> = ({
   hours,
   userLat,
   userLon,
+  isFavorite = false,
+  onToggleFavorite,
   onPress,
 }) => {
+  const router = useRouter();
   const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const themeColors = THEME.colors[colorScheme];
 
@@ -81,6 +88,15 @@ export const CafeCard: React.FC<CafeCardProps> = ({
 
   const [imageError, setImageError] = useState(false);
 
+  if (cafe.name.toLowerCase().includes('grid')) {
+    console.log(`[DEBUG CafeCard] Grid Cafe render:`, {
+      id: cafe.id,
+      name: cafe.name,
+      image_url: cafe.image_url,
+      imageError,
+    });
+  }
+
   return (
     <Pressable
       onPress={onPress}
@@ -99,12 +115,41 @@ export const CafeCard: React.FC<CafeCardProps> = ({
         <Image
           source={{ uri: cafe.image_url }}
           style={styles.image}
-          onError={() => setImageError(true)}
+          onError={(e) => {
+            console.error(`[DEBUG CafeCard] Image load failed for ${cafe.name}:`, e.nativeEvent, 'URL:', cafe.image_url);
+            setImageError(true);
+          }}
         />
       ) : (
         <View style={[styles.placeholderImage, { backgroundColor: themeColors.surfaceMuted }]}>
           <Ionicons name="cafe-outline" size={40} color={themeColors.textLight} />
         </View>
+      )}
+
+      {/* Heart Favorite Button on Top Left */}
+      {onToggleFavorite && (
+        <Pressable
+          onPress={(e: any) => {
+            if (e) {
+              if (typeof e.stopPropagation === 'function') e.stopPropagation();
+              if (typeof e.preventDefault === 'function') e.preventDefault();
+            }
+            console.log('[Favorites Debug] Favorite pressed:', cafe.id, cafe.name);
+            onToggleFavorite();
+          }}
+          style={({ pressed }) => [
+            styles.heartOverlayBtn,
+            { backgroundColor: 'rgba(0, 0, 0, 0.45)' },
+            pressed && { opacity: 0.8 },
+          ]}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons
+            name={isFavorite ? 'heart' : 'heart-outline'}
+            size={18}
+            color={isFavorite ? '#EF4444' : '#FFF'}
+          />
+        </Pressable>
       )}
 
       {/* Open/Closed Badge on Top Right of Image */}
@@ -187,7 +232,7 @@ export const CafeCard: React.FC<CafeCardProps> = ({
         {/* Divider */}
         <View style={[styles.divider, { backgroundColor: themeColors.border }]} />
 
-        {/* Crowd level banner */}
+        {/* Crowd level banner & Directions button */}
         <View style={styles.footerRow}>
           <View
             style={[
@@ -200,9 +245,21 @@ export const CafeCard: React.FC<CafeCardProps> = ({
               {crowdInfo.text} Crowd
             </Text>
           </View>
-          <Text style={[styles.timeText, { color: themeColors.textLight }]}>
-            {formatCrowdTime()}
-          </Text>
+
+          <Pressable
+            onPress={(e: any) => {
+              if (e && e.stopPropagation) e.stopPropagation();
+              router.push(`/(tabs)?routeCafeId=${cafe.id}`);
+            }}
+            style={({ pressed }) => [
+              styles.directionsBtn,
+              { backgroundColor: themeColors.primary },
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Ionicons name="navigate" size={12} color="#FFF" style={{ marginRight: 4 }} />
+            <Text style={styles.directionsBtnText}>Get Directions</Text>
+          </Pressable>
         </View>
       </View>
     </Pressable>
@@ -227,6 +284,17 @@ const styles = StyleSheet.create({
     height: 140,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  heartOverlayBtn: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
   },
   statusBadge: {
     position: 'absolute',
@@ -316,6 +384,18 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: 10,
+  },
+  directionsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: THEME.roundness.sm,
+  },
+  directionsBtnText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 });
 export default CafeCard;

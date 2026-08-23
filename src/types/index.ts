@@ -93,3 +93,13 @@ export interface RecommendationResult {
   score: number;
   reasons: string[];
 }
+
+export interface CafeReview {
+  id: string;
+  cafe_id: string;
+  user_id: string;
+  review_text: string;
+  created_at: string;
+  updated_at: string;
+  user_display_name?: string;
+}

@@ -109,7 +109,7 @@ export default function OnboardingScreen() {
             </View>
             <Text style={[styles.title, { color: themeColors.text }]}>Complete Your Profile</Text>
             <Text style={[styles.subtitle, { color: themeColors.textLight }]}>
-              Please provide your details to finish setting up your account before exploring study spots.
+              Please provide your details to finish setting up your account before exploring FindMyCafe.
             </Text>
           </View>
 

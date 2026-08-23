@@ -14,12 +14,13 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocation } from '../../src/context/LocationContext';
-import { getCafes, getCafeHours, getFavorites, submitRating, toggleFavorite } from '../../src/services/data';
+import { getCafes, getCafeHours, getFavorites, submitCafeReview, toggleFavorite } from '../../src/services/data';
 import { Cafe, CafeHours } from '../../src/types';
 import { THEME } from '../../src/constants/theme';
 import { calculateDistance, formatDistance, estimateWalkingTime, estimateDrivingTime } from '../../src/utils/distance';
+import { openCafeDirections } from '../../src/utils/directions';
 import { getOpenStatus, formatWeeklyHours } from '../../src/utils/hours';
-import RatingModal from '../../src/components/RatingModal';
+import ReviewModal from '../../src/components/ReviewModal';
 import LoadingScreen from '../../src/components/LoadingScreen';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -37,7 +38,7 @@ export default function CafeProfileScreen() {
   const [hours, setHours] = useState<CafeHours[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [imageError, setImageError] = useState(false);
 
@@ -67,20 +68,58 @@ export default function CafeProfileScreen() {
     }
   };
 
+  const handleReviewTrigger = () => {
+    if (!user) {
+      if (Platform.OS === 'web') {
+        const confirmSignIn = window.confirm(
+          'Sign In Required: You need to be signed in to leave a review. Would you like to sign in now?'
+        );
+        if (confirmSignIn) {
+          router.push('/auth');
+        }
+      } else {
+        Alert.alert(
+          'Sign In Required',
+          'You need to be signed in to leave a review. Would you like to sign in now?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign In', onPress: () => router.push('/auth') },
+          ]
+        );
+      }
+      return;
+    }
+    setReviewModalVisible(true);
+  };
+
+  const handleReviewSubmit = async (reviewText: string) => {
+    if (!cafe) return;
+    await submitCafeReview(cafe.id, reviewText);
+  };
+
   useEffect(() => {
     fetchData();
   }, [id, user]);
 
   const handleFavoriteToggle = async () => {
     if (!user) {
-      Alert.alert(
-        'Authentication Required',
-        'You need to be signed in to save favorites. Would you like to sign in now?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/auth') },
-        ]
-      );
+      if (Platform.OS === 'web') {
+        const confirmSignIn = window.confirm(
+          'Sign In Required: You need to be signed in to save favorites. Would you like to sign in now?'
+        );
+        if (confirmSignIn) {
+          router.push('/auth');
+        }
+      } else {
+        Alert.alert(
+          'Authentication Required',
+          'You need to be signed in to save favorites. Would you like to sign in now?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign In', onPress: () => router.push('/auth') },
+          ]
+        );
+      }
       return;
     }
 
@@ -89,63 +128,22 @@ export default function CafeProfileScreen() {
     setIsFavorite(newStatus);
     try {
       await toggleFavorite(user.id, cafe.id, newStatus);
-    } catch (err) {
+      console.log(`[Favorites Debug Profile] Toggled favorite for ${cafe.id} to ${newStatus}`);
+    } catch (err: any) {
       setIsFavorite(!newStatus); // revert on error
-      console.error('Failed to toggle favorite:', err);
-    }
-  };
-
-  const handleRateTrigger = () => {
-    if (!user) {
-      Alert.alert(
-        'Authentication Required',
-        'You need to be signed in to submit environment ratings. Would you like to sign in now?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/auth') },
-        ]
-      );
-      return;
-    }
-    setRatingModalVisible(true);
-  };
-
-  const handleRatingSubmit = async (quietness: number, aesthetics: number) => {
-    if (!user || !cafe) return;
-    try {
-      await submitRating(cafe.id, user.id, quietness, aesthetics);
-      Alert.alert('Success', 'Thank you for your study spot rating!');
-      fetchData(); // reload statistics
-    } catch (err) {
-      Alert.alert('Error', 'Failed to submit rating. Please try again.');
+      console.error('[Favorites Debug Profile] Failed to toggle favorite:', err);
+      const msg = err.message || 'Failed to update favorite.';
+      if (Platform.OS === 'web') {
+        window.alert(`Favorite Error: ${msg}`);
+      } else {
+        Alert.alert('Favorite Error', msg);
+      }
     }
   };
 
   const openDirections = () => {
     if (!cafe) return;
-    const latLng = `${cafe.latitude},${cafe.longitude}`;
-    const label = encodeURIComponent(cafe.name);
-    const hasUserLoc = Boolean(location && location.latitude && location.longitude);
-    const originStr = hasUserLoc ? `${location.latitude},${location.longitude}` : '';
-
-    let url = `https://www.google.com/maps/dir/?api=1&destination=${latLng}`;
-    if (originStr) {
-      url += `&origin=${originStr}`;
-    }
-
-    if (Platform.OS === 'ios') {
-      url = originStr
-        ? `http://maps.apple.com/?saddr=${originStr}&daddr=${latLng}&q=${label}`
-        : `http://maps.apple.com/?daddr=${latLng}&q=${label}`;
-    } else if (Platform.OS === 'android') {
-      url = originStr
-        ? `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${latLng}`
-        : `geo:0,0?q=${latLng}(${label})`;
-    }
-
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Error', 'Could not open map directions application.');
-    });
+    router.push(`/(tabs)?routeCafeId=${cafe.id}`);
   };
 
   if (loading) {
@@ -199,14 +197,6 @@ export default function CafeProfileScreen() {
   };
 
   const crowdDetails = getCrowdDetails();
-
-  const getQuietnessLabel = (val?: number) => {
-    const v = val || 0;
-    if (v === 0) return 'No ratings yet';
-    if (v <= 1.6) return 'Loud 🔊';
-    if (v <= 2.3) return 'Moderate 🔉';
-    return 'Quiet 🤫';
-  };
 
   return (
     <View style={[styles.mainContainer, { backgroundColor: themeColors.background }]}>
@@ -337,44 +327,6 @@ export default function CafeProfileScreen() {
           {/* Divider */}
           <View style={[styles.sectionDivider, { backgroundColor: themeColors.border }]} />
 
-          {/* Study Environment & Aesthetics Ratings */}
-          <View style={styles.profileSection}>
-            <Text style={[styles.sectionHeading, { color: themeColors.text }]}>Study Environment</Text>
-            
-            <View style={styles.ratingsCardRow}>
-              {/* Quietness Card */}
-              <View style={[styles.ratingSubCard, { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border }]}>
-                <Ionicons name="volume-mute-outline" size={24} color={themeColors.primary} />
-                <Text style={[styles.ratingCardLabel, { color: themeColors.textMuted }]}>Quietness</Text>
-                <Text style={[styles.ratingCardValue, { color: themeColors.text }]}>
-                  {getQuietnessLabel(cafe.avg_quietness)}
-                </Text>
-                <Text style={[styles.ratingCardSub, { color: themeColors.textLight }]}>
-                  {cafe.avg_quietness && cafe.avg_quietness > 0
-                    ? `${Number(cafe.avg_quietness).toFixed(1)} / 3.0 rating`
-                    : 'Unrated'}
-                </Text>
-              </View>
-
-              {/* Aesthetics Card */}
-              <View style={[styles.ratingSubCard, { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border }]}>
-                <Ionicons name="star-outline" size={24} color="#F59E0B" />
-                <Text style={[styles.ratingCardLabel, { color: themeColors.textMuted }]}>Aesthetics</Text>
-                <Text style={[styles.ratingCardValue, { color: themeColors.text }]}>
-                  {cafe.avg_aesthetics && cafe.avg_aesthetics > 0
-                    ? `${Number(cafe.avg_aesthetics).toFixed(1)} ★`
-                    : 'N/A'}
-                </Text>
-                <Text style={[styles.ratingCardSub, { color: themeColors.textLight }]}>
-                  {cafe.total_ratings || 0} student ratings
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Divider */}
-          <View style={[styles.sectionDivider, { backgroundColor: themeColors.border }]} />
-
           {/* Wi-Fi Details */}
           <View style={styles.profileSection}>
             <Text style={[styles.sectionHeading, { color: themeColors.text }]}>Internet Connection</Text>
@@ -438,6 +390,32 @@ export default function CafeProfileScreen() {
               })}
             </View>
           </View>
+
+          {/* Divider */}
+          <View style={[styles.sectionDivider, { backgroundColor: themeColors.border }]} />
+
+          {/* Leave a Review Action Section */}
+          <View style={styles.profileSection}>
+            <Pressable
+              onPress={handleReviewTrigger}
+              style={({ pressed }) => [
+                styles.reviewActionBanner,
+                { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border },
+                pressed && { opacity: 0.9 },
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.reviewActionTitle, { color: themeColors.text }]}>Visited this café?</Text>
+                <Text style={[styles.reviewActionSub, { color: themeColors.textMuted }]}>
+                  Share your study experience with us!
+                </Text>
+              </View>
+              <View style={[styles.leaveReviewBtn, { backgroundColor: themeColors.primary }]}>
+                <Ionicons name="chatbox-ellipses" size={15} color="#FFF" style={{ marginRight: 6 }} />
+                <Text style={styles.leaveReviewBtnText}>Leave a Review!</Text>
+              </View>
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
 
@@ -449,30 +427,20 @@ export default function CafeProfileScreen() {
         ]}
       >
         <Pressable
-          onPress={handleRateTrigger}
-          style={[styles.outlineBtn, { borderColor: themeColors.primary }]}
-        >
-          <Ionicons name="create-outline" size={18} color={themeColors.primary} style={styles.btnIcon} />
-          <Text style={[styles.outlineBtnText, { color: themeColors.primary }]}>Rate Vibe</Text>
-        </Pressable>
-
-        <Pressable
           onPress={openDirections}
-          style={[styles.primaryBtn, { backgroundColor: themeColors.primary }]}
+          style={[styles.primaryBtn, { backgroundColor: themeColors.primary, flex: 1 }]}
         >
           <Ionicons name="navigate-outline" size={18} color="#FFF" style={styles.btnIcon} />
           <Text style={styles.primaryBtnText}>Get Directions</Text>
         </Pressable>
       </View>
 
-      {/* Submission Rating Modal */}
-      <RatingModal
-        visible={ratingModalVisible}
-        onClose={() => setRatingModalVisible(false)}
-        onSubmit={handleRatingSubmit}
+      {/* Leave a Review Modal */}
+      <ReviewModal
+        visible={reviewModalVisible}
+        onClose={() => setReviewModalVisible(false)}
+        onSubmit={handleReviewSubmit}
         cafeName={cafe.name}
-        initialQuietness={cafe.avg_quietness ? Math.round(cafe.avg_quietness) : 2}
-        initialAesthetics={cafe.avg_aesthetics ? Math.round(cafe.avg_aesthetics) : 3}
       />
     </View>
   );
@@ -633,31 +601,6 @@ const styles = StyleSheet.create({
     marginTop: THEME.spacing.xs,
     fontWeight: '500',
   },
-  ratingsCardRow: {
-    flexDirection: 'row',
-    gap: THEME.spacing.md,
-  },
-  ratingSubCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: THEME.roundness.md,
-    padding: THEME.spacing.md,
-    alignItems: 'center',
-    gap: 4,
-  },
-  ratingCardLabel: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  ratingCardValue: {
-    fontSize: THEME.typography.sizes.md,
-    fontWeight: 'bold',
-  },
-  ratingCardSub: {
-    fontSize: 9,
-    fontWeight: '500',
-  },
   specItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -710,19 +653,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     gap: THEME.spacing.md,
   },
-  outlineBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    height: 48,
-    borderRadius: THEME.roundness.md,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  outlineBtnText: {
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: 'bold',
-  },
   primaryBtn: {
     flex: 2,
     flexDirection: 'row',
@@ -738,5 +668,33 @@ const styles = StyleSheet.create({
   },
   btnIcon: {
     marginRight: 6,
+  },
+  leaveReviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: THEME.roundness.full,
+  },
+  leaveReviewBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  reviewActionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: THEME.spacing.md,
+    borderRadius: THEME.roundness.md,
+    borderWidth: 1,
+    gap: THEME.spacing.sm,
+  },
+  reviewActionTitle: {
+    fontSize: THEME.typography.sizes.sm,
+    fontWeight: 'bold',
+  },
+  reviewActionSub: {
+    fontSize: 11,
+    marginTop: 2,
   },
 });

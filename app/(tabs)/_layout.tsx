@@ -38,7 +38,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Explore',
-          headerTitle: 'Study Spots',
+          headerTitle: 'FindMyCafe',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'compass' : 'compass-outline'}
