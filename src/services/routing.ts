@@ -55,12 +55,22 @@ export async function fetchRoute(
         data = await response.json();
       }
     } catch (err) {
-      console.error('OSRM routing request failed:', err);
+      console.warn('OSRM routing request failed:', err);
     }
   }
 
   if (!data || !data.routes || !Array.isArray(data.routes) || data.routes.length === 0) {
-    throw new Error('Unable to calculate route between points right now.');
+    // Fallback straight-line route if API calls fail or are blocked
+    return {
+      coordinates: [
+        origin,
+        { latitude: Number(destCafe.latitude), longitude: Number(destCafe.longitude) },
+      ],
+      distanceMiles: 0,
+      durationMinutes: 0,
+      travelMode: mode,
+      cafe: destCafe,
+    };
   }
 
   const mainRoute = data.routes[0];

@@ -56,8 +56,13 @@ export function openCafeDirections(
       : `https://www.google.com/maps/dir/?api=1&destination=${destLatLng}`;
   }
 
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+
   Linking.openURL(url).catch((err) => {
-    console.error('Failed to open directions URL:', url, err);
+    console.warn('Failed to open directions URL:', url, err);
     Alert.alert(
       'Cannot Open Maps',
       'Could not launch map directions application on your device.'
