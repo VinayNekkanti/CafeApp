@@ -73,19 +73,24 @@ export interface LocationState {
   permissionGranted: boolean;
 }
 
-export type AssistantIntent = 'general_chat' | 'recommend_cafe' | 'modify_recommendation';
+export type AssistantIntent = 'general_chat' | 'recommend_cafe' | 'modify_recommendation' | 'clarification';
 
 export interface StructuredPreferences {
   intent?: AssistantIntent;
   max_results?: number;
   max_distance?: number;
+  max_distance_miles?: number | null;
   distance_unit?: 'miles' | 'minutes';
-  wifi_required?: boolean;
+  wifi_required?: boolean | null;
+  open_now_required?: boolean | null;
+  open_after?: string | null;
   preferred_crowd_levels?: CrowdLevel[];
-  quietness?: 'Loud' | 'Moderate' | 'Quiet';
-  aesthetics_priority?: 'Low' | 'Medium' | 'High';
-  open_now?: boolean;
-  sort_by?: 'distance' | 'crowd' | 'quietness' | 'aesthetics' | 'rating' | 'default';
+  crowd_preference?: CrowdLevel[] | null;
+  quietness?: 'Loud' | 'Moderate' | 'Quiet' | null;
+  aesthetics_priority?: 'Low' | 'Medium' | 'High' | null;
+  open_now?: boolean | null;
+  sort_by?: 'distance' | 'crowd' | 'quietness' | 'aesthetics' | 'rating' | 'default' | null;
+  is_exact_match?: boolean;
 }
 
 export interface RecommendationResult {

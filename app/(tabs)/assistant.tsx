@@ -49,6 +49,7 @@ export default function AIAssistantScreen() {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [hours, setHours] = useState<Record<string, CafeHours[]>>({});
+  const [lastPreferences, setLastPreferences] = useState<StructuredPreferences | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -78,7 +79,7 @@ export default function AIAssistantScreen() {
       const hoursMap = await getCafeHoursBatch(cafeIds);
       setHours(hoursMap);
 
-      let responseData: { preferences: StructuredPreferences; recommendations: Cafe[]; explanation: string };
+      let responseData: { preferences: StructuredPreferences; recommendations: Cafe[]; explanation: string; is_exact_match?: boolean };
 
       // 2. Attempt Edge Function invocation with fallback
       try {
@@ -87,6 +88,7 @@ export default function AIAssistantScreen() {
             query: userMessageText,
             location: { latitude: location.latitude, longitude: location.longitude },
             history: messages.map((m) => ({ sender: m.sender, text: m.text })),
+            lastPreferences,
           },
         });
 
@@ -94,9 +96,24 @@ export default function AIAssistantScreen() {
           throw new Error(error?.message || 'Edge Function returned empty data');
         }
         responseData = data;
-      } catch (edgeErr) {
-        console.warn('Edge function failed, running client-side AI recommendation:', edgeErr);
-        responseData = await runLocalAIEngine(userMessageText, cafesList, hoursMap, location.latitude, location.longitude, messages);
+        if (responseData.preferences) {
+          setLastPreferences(responseData.preferences);
+        }
+
+        console.log('[AI] mode=OPENAI payload=', JSON.stringify({
+          intent: responseData.preferences?.intent || 'recommend_cafe',
+          max_results: responseData.preferences?.max_results || 3,
+          filters: responseData.preferences,
+          candidate_count: responseData.recommendations?.length || 0,
+          selected_cafe_ids: (responseData.recommendations || []).map((c: any) => c.id),
+          ai_mode: 'OPENAI',
+        }));
+      } catch (edgeErr: any) {
+        console.warn(`[AI] mode=LOCAL_FALLBACK reason="${edgeErr.message || 'Edge Function error'}"`);
+        responseData = await runLocalAIEngine(userMessageText, cafesList, hoursMap, location.latitude, location.longitude, messages, lastPreferences);
+        if (responseData.preferences) {
+          setLastPreferences(responseData.preferences);
+        }
       }
 
       // 3. Update assistant bubble with actual recommendation results
@@ -142,21 +159,22 @@ export default function AIAssistantScreen() {
     hoursMap: Record<string, CafeHours[]>,
     lat: number,
     lon: number,
-    historyMessages: Message[]
+    historyMessages: Message[],
+    prevPrefs?: StructuredPreferences | null
   ) => {
     const qTrim = query.trim().toLowerCase();
 
     // Check greeting / non-search message
-    if (qTrim === 'hi' || qTrim === 'hello' || qTrim === 'hey' || qTrim.includes('what can you do')) {
+    if (qTrim === 'hi' || qTrim === 'hello' || qTrim === 'hey' || qTrim.includes('what can you do') || qTrim === 'thanks' || qTrim === 'thank you') {
       const prefs: StructuredPreferences = { intent: 'general_chat' };
-      console.log('[AI Assistant DEBUG]');
-      console.log('Current user message:', query);
-      console.log('Parsed intent: greeting');
-      console.log('Parsed preferences:', prefs);
-      console.log('Requested result count:', 0);
-      console.log('Candidate cafe count:', cafesList.length);
-      console.log('Ranked cafe names: []');
-      console.log('Final returned cafe count: 0');
+      console.log('[AI] mode=LOCAL_FALLBACK payload=', JSON.stringify({
+        intent: 'general_chat',
+        max_results: 0,
+        filters: {},
+        candidate_count: cafesList.length,
+        selected_cafe_ids: [],
+        ai_mode: 'LOCAL_FALLBACK',
+      }));
 
       return {
         preferences: prefs,
@@ -165,12 +183,10 @@ export default function AIAssistantScreen() {
       };
     }
 
-    // Check for modify_recommendation (e.g. "only give me 1", "just 1", "show 1", "give me 1")
-    const isModify = qTrim.includes('only') || qTrim.includes('just') || qTrim.startsWith('which');
-    const lastAssistantMsgWithRecs = [...historyMessages].reverse().find(m => m.sender === 'assistant' && m.recommendations && m.recommendations.length > 0);
-
+    const isModify = qTrim.includes('only') || qTrim.includes('just') || qTrim.startsWith('which') || qTrim.includes('make it') || qTrim.includes('actually');
     const prefs: StructuredPreferences = {
-      intent: isModify && lastAssistantMsgWithRecs ? 'modify_recommendation' : 'recommend_cafe',
+      ...(prevPrefs || {}),
+      intent: isModify ? 'modify_recommendation' : 'recommend_cafe',
     };
 
     // Result count parsing
@@ -178,14 +194,25 @@ export default function AIAssistantScreen() {
       prefs.max_results = 1;
     } else if (qTrim.includes('2') || qTrim.includes('two') || qTrim.includes('pair')) {
       prefs.max_results = 2;
-    } else {
+    } else if (qTrim.includes('3') || qTrim.includes('three')) {
+      prefs.max_results = 3;
+    } else if (!prefs.max_results) {
       prefs.max_results = 3;
     }
 
+    // Distance parsing
+    if (qTrim.includes('1 mile') || qTrim.includes('within 1')) {
+      prefs.max_distance_miles = 1;
+    } else if (qTrim.includes('2 mile') || qTrim.includes('within 2')) {
+      prefs.max_distance_miles = 2;
+    } else if (qTrim.includes('3 mile') || qTrim.includes('within 3')) {
+      prefs.max_distance_miles = 3;
+    }
+
     // Sort & filter parsing
-    if (qTrim.includes('closest') || qTrim.includes('nearest') || qTrim.includes('close')) {
+    if (qTrim.includes('closest') || qTrim.includes('nearest') || qTrim.includes('close') || qTrim.includes('nearby')) {
       prefs.sort_by = 'distance';
-    } else if (qTrim.includes('least crowded') || qTrim.includes('unpacked') || qTrim.includes('not crowded') || qTrim.includes('empty')) {
+    } else if (qTrim.includes('least crowded') || qTrim.includes('unpacked') || qTrim.includes('not crowded') || qTrim.includes('empty') || qTrim.includes('less crowded')) {
       prefs.sort_by = 'crowd';
       prefs.preferred_crowd_levels = ['Low', 'Moderate'];
     } else if (qTrim.includes('quiet') || qTrim.includes('silent') || qTrim.includes('peace')) {
@@ -197,34 +224,18 @@ export default function AIAssistantScreen() {
       prefs.wifi_required = true;
     }
 
-    let finalRecommendations: Cafe[] = [];
+    const ranked = rankCafes(cafesList, hoursMap, lat, lon, prefs);
+    const finalRecommendations = ranked.map((r) => r.cafe);
 
-    if (prefs.intent === 'modify_recommendation' && lastAssistantMsgWithRecs?.recommendations) {
-      let recsPool = [...lastAssistantMsgWithRecs.recommendations];
-      if (prefs.sort_by === 'distance') {
-        recsPool.sort((a, b) => {
-          const distA = calculateDistance(lat, lon, a.latitude, a.longitude);
-          const distB = calculateDistance(lat, lon, b.latitude, b.longitude);
-          return distA - distB;
-        });
-      }
-      const count = Math.min(prefs.max_results || 1, recsPool.length);
-      finalRecommendations = recsPool.slice(0, count);
-    } else {
-      const ranked = rankCafes(cafesList, hoursMap, lat, lon, prefs);
-      finalRecommendations = ranked.map((r) => r.cafe);
-    }
+    console.log('[AI] mode=LOCAL_FALLBACK payload=', JSON.stringify({
+      intent: prefs.intent,
+      max_results: prefs.max_results,
+      filters: prefs,
+      candidate_count: cafesList.length,
+      selected_cafe_ids: finalRecommendations.map((c) => c.id),
+      ai_mode: 'LOCAL_FALLBACK',
+    }));
 
-    console.log('[AI Assistant DEBUG]');
-    console.log('Current user message:', query);
-    console.log('Parsed intent:', prefs.intent);
-    console.log('Parsed preferences:', prefs);
-    console.log('Requested result count:', prefs.max_results);
-    console.log('Candidate cafe count:', cafesList.length);
-    console.log('Ranked cafe names:', finalRecommendations.map(c => c.name));
-    console.log('Final returned cafe count:', finalRecommendations.length);
-
-    // Build grounded explanation
     let explanation = '';
     if (finalRecommendations.length === 0) {
       explanation = "I scanned all FindMyCafe locations near UCI but couldn't find any matching your exact criteria. Try broadening your request!";
@@ -242,6 +253,12 @@ export default function AIAssistantScreen() {
       });
       explanation += `💡 Tap on any café card below to view details, verify hours, or check location routing!`;
     }
+
+    return {
+      preferences: prefs,
+      recommendations: finalRecommendations,
+      explanation,
+    };
 
     return {
       preferences: prefs,

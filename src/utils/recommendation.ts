@@ -21,10 +21,10 @@ export function rankCafes(
   userLon: number,
   prefs?: StructuredPreferences
 ): RecommendationResult[] {
-  const scoredCafes = cafes
+  let scoredCafes = cafes
     .map((cafe) => {
       const cafeHours = allHours[cafe.id] || [];
-      const scoreResult = calculateCafeScore(cafe, cafeHours, userLat, userLon, prefs);
+      const scoreResult = calculateCafeScore(cafe, cafeHours, userLat, userLon, prefs, true);
       
       return {
         cafe,
@@ -35,6 +35,21 @@ export function rankCafes(
       };
     })
     .filter((result) => !result.excluded);
+
+  // If hard filtering yields zero candidates, run soft scoring as compromise
+  if (scoredCafes.length === 0) {
+    scoredCafes = cafes.map((cafe) => {
+      const cafeHours = allHours[cafe.id] || [];
+      const scoreResult = calculateCafeScore(cafe, cafeHours, userLat, userLon, prefs, false);
+      return {
+        cafe,
+        score: scoreResult.score,
+        reasons: scoreResult.reasons,
+        excluded: false,
+        distanceMiles: calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude),
+      };
+    });
+  }
 
   // Sorting logic based on prefs.sort_by
   scoredCafes.sort((a, b) => {
@@ -55,7 +70,12 @@ export function rankCafes(
     return b.score - a.score;
   });
 
-  const resultCount = Math.min(Math.max(prefs?.max_results ?? 3, 1), 3);
+  if (prefs?.intent === 'general_chat' || prefs?.max_results === 0) {
+    return [];
+  }
+
+  const requestedCount = prefs?.max_results ?? 3;
+  const resultCount = Math.min(Math.max(requestedCount, 1), 3);
 
   return scoredCafes
     .slice(0, resultCount)
@@ -73,16 +93,29 @@ function calculateCafeScore(
   hours: CafeHours[],
   userLat: number,
   userLon: number,
-  prefs?: StructuredPreferences
+  prefs?: StructuredPreferences,
+  enforceHardFilters: boolean = true
 ): ScoreBreakdown {
   const reasons: string[] = [];
   let excluded = false;
+  const distanceMiles = calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude);
+  const maxDistLimit = prefs?.max_distance_miles ?? prefs?.max_distance;
 
   // 1. HARD FILTERS
-  // Wi-Fi requirement
-  if (prefs?.wifi_required && !cafe.wifi_available) {
-    excluded = true;
-    reasons.push('Excluded: Requires Wi-Fi, but none is available.');
+  if (enforceHardFilters) {
+    if (prefs?.wifi_required && !cafe.wifi_available) {
+      excluded = true;
+    }
+    if (maxDistLimit && distanceMiles > maxDistLimit) {
+      excluded = true;
+    }
+    const isNowRequired = prefs?.open_now_required ?? prefs?.open_now;
+    if (isNowRequired) {
+      const openStatus = getOpenStatus(hours);
+      if (!openStatus.isOpen) {
+        excluded = true;
+      }
+    }
   }
 
   if (excluded) {
@@ -117,7 +150,6 @@ function calculateCafeScore(
   // 3. DIMENSION SCORING
 
   // A. Distance (Max 100 points)
-  const distanceMiles = calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude);
   let distanceScore = 0;
   if (distanceMiles <= 0.2) {
     distanceScore = 100;

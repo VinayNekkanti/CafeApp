@@ -7,13 +7,12 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const { query, location } = await req.json();
+    const { query, location, history, lastPreferences } = await req.json();
 
     if (!query) {
       return new Response(JSON.stringify({ error: 'Query is required' }), {
@@ -30,7 +29,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 2. Fetch all cafes and hours from DB
+    // 2. Fetch cafes & hours from DB
     const { data: cafes, error: cafesError } = await supabase
       .from('v_cafes_with_ratings')
       .select('*');
@@ -43,104 +42,175 @@ serve(async (req) => {
 
     if (hoursError) throw hoursError;
 
-    const hoursMap = {};
-    hours.forEach((h) => {
+    const hoursMap: Record<string, any[]> = {};
+    hours.forEach((h: any) => {
       if (!hoursMap[h.cafe_id]) {
         hoursMap[h.cafe_id] = [];
       }
       hoursMap[h.cafe_id].push(h);
     });
 
-    // 3. Connect to OpenAI to extract structured intent & preferences
     const openAiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openAiApiKey) {
       throw new Error('OPENAI_API_KEY is not configured on the server.');
     }
 
-    const model = 'gpt-4o-mini';
-    const openaiUrl = 'https://api.openai.com/v1/chat/completions';
+    const model = 'gpt-5.6-luna';
 
-    const systemPrompt = `You are an AI assistant that classifies intent and extracts structured preferences from a student's natural language request for a study spot near UC Irvine.
+    // Build context-aware prompt using lastPreferences and recent message turns
+    const recentTurns = (history || []).slice(-4).map((m: any) => `${m.sender}: ${m.text}`).join('\n');
+
+    const extractSystemPrompt = `You are an AI Assistant for UC Irvine students seeking café study spots.
+Classify the user message into one of these intents:
+- "general_chat": Casual greetings or non-recommendation remarks (e.g. "hi", "hello", "thanks", "what can you do?")
+- "recommend_cafe": A new request for café recommendations
+- "modify_recommendation": Modifying a prior recommendation (e.g. "only give me one", "make it closer", "somewhere less crowded")
+- "clarification": Asking for details or clarifying a prior answer
 
 Return JSON strictly matching this schema:
 {
-  "intent": "general_chat" | "recommend_cafe" | "modify_recommendation",
-  "max_results": number (optional, integer 1, 2, or 3. E.g. "give me one cafe" -> 1, "give me 2 cafes" -> 2),
-  "sort_by": "distance" | "crowd" | "quietness" | "aesthetics" | "default" (optional),
-  "max_distance": number (optional, max distance in miles or minutes),
-  "distance_unit": "miles" | "minutes" (optional),
-  "wifi_required": boolean (optional),
-  "preferred_crowd_levels": Array of "Low" | "Moderate" | "Busy" | "Full" (optional),
-  "quietness": "Quiet" | "Moderate" | "Loud" (optional),
-  "aesthetics_priority": "Low" | "Medium" | "High" (optional)
+  "intent": "general_chat" | "recommend_cafe" | "modify_recommendation" | "clarification",
+  "max_results": integer (1, 2, or 3. Default 3. "give me one" -> 1, "show two" -> 2),
+  "wifi_required": boolean or null,
+  "max_distance_miles": number or null (e.g. "within 2 miles" -> 2),
+  "open_now_required": boolean or null,
+  "crowd_preference": Array of ("Low" | "Moderate" | "Busy" | "Full") or null,
+  "quietness": ("Quiet" | "Moderate" | "Loud") or null,
+  "sort_by": ("distance" | "crowd" | "quietness" | "aesthetics" | "rating" | "default") or null
 }
 
 Rules:
-1. If the input is a greeting or general remark (e.g. "hi", "hello", "thanks", "how are you"), set intent = "general_chat" and max_results = 0.
-2. If the user asks for a specific quantity (e.g. "give me 1 cafe", "only 1", "closest cafe"), set max_results = 1.
-3. If the user asks to modify a previous recommendation (e.g. "only give me 1", "which of those is closest"), set intent = "modify_recommendation".`;
+1. Greetings ("hi", "hello", "thanks") MUST have intent = "general_chat" and max_results = 0.
+2. If previous preferences exist (${JSON.stringify(lastPreferences || {})}), preserve them unless the user explicitly overrides them.`;
 
-    const extractResponse = await fetch(openaiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Analyze request: "${query}"` },
-        ],
-      }),
-    });
+    let preferences: any = { intent: 'recommend_cafe', max_results: 3 };
 
-    const extractResult = await extractResponse.json();
-    const extractedText = extractResult.choices[0].message.content;
-    const preferences = JSON.parse(extractedText);
+    // Try OpenAI Responses API (/v1/responses), fallback to Chat Completions if needed
+    try {
+      const responseRes = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openAiApiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          input: [
+            { role: 'system', content: extractSystemPrompt },
+            { role: 'user', content: `Recent context:\n${recentTurns}\n\nCurrent user message: "${query}"` },
+          ],
+          response_format: { type: 'json_object' },
+        }),
+      });
 
-    // Intent Handling: General Chat
+      if (responseRes.ok) {
+        const resData = await responseRes.json();
+        const outputText = resData.output?.[0]?.message?.content || resData.choices?.[0]?.message?.content || resData.output_text;
+        if (outputText) {
+          preferences = JSON.parse(outputText);
+        }
+      } else {
+        // Fallback to Chat Completions API
+        const chatRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openAiApiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: extractSystemPrompt },
+              { role: 'user', content: `Recent context:\n${recentTurns}\n\nCurrent user message: "${query}"` },
+            ],
+          }),
+        });
+
+        if (chatRes.ok) {
+          const chatData = await chatRes.json();
+          preferences = JSON.parse(chatData.choices[0].message.content);
+        }
+      }
+    } catch (e) {
+      console.warn('OpenAI preference extraction API call error, using local parsing:', e);
+    }
+
+    // Merge previous preferences if intent is modify_recommendation
+    if (preferences.intent === 'modify_recommendation' && lastPreferences) {
+      preferences = {
+        ...lastPreferences,
+        ...preferences,
+        wifi_required: preferences.wifi_required ?? lastPreferences.wifi_required,
+        max_distance_miles: preferences.max_distance_miles ?? lastPreferences.max_distance_miles,
+        open_now_required: preferences.open_now_required ?? lastPreferences.open_now_required,
+        crowd_preference: preferences.crowd_preference ?? lastPreferences.crowd_preference,
+      };
+    }
+
+    // Handle General Chat (no cards)
     if (preferences.intent === 'general_chat') {
-      console.log('[Edge Function DEBUG]');
-      console.log('Current user message:', query);
-      console.log('Parsed intent: general_chat');
-      console.log('Parsed preferences:', preferences);
-      console.log('Requested result count: 0');
-      console.log('Candidate cafe count:', cafes.length);
-      console.log('Ranked cafe names: []');
-      console.log('Final returned cafe count: 0');
+      const debugLog = {
+        intent: 'general_chat',
+        max_results: 0,
+        filters: {},
+        candidate_count: cafes.length,
+        selected_cafe_ids: [],
+        ai_mode: 'OPENAI',
+      };
+      console.log('[AI] mode=OPENAI payload=', JSON.stringify(debugLog));
 
       return new Response(
         JSON.stringify({
           preferences,
           recommendations: [],
           explanation: "Hi! Tell me what kind of study spot you're looking for — for example, quiet, close by, good Wi-Fi, or not too crowded.",
+          is_exact_match: true,
+          ai_mode: 'OPENAI',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // 4. Run Deterministic Scoring & Sorting
-    const scoredCafes = cafes.map((cafe) => {
-      const cafeHours = hoursMap[cafe.id] || [];
-      const scoreResult = calculateScoreLocally(cafe, cafeHours, userLat, userLon, preferences);
-      return {
-        cafe,
-        score: scoreResult.score,
-        reasons: scoreResult.reasons,
-        excluded: scoreResult.excluded,
-        distanceMiles: getDistance(userLat, userLon, cafe.latitude, cafe.longitude),
-      };
-    }).filter((c) => !c.excluded);
+    // Deterministic Hard Filtering & Scoring
+    let isExactMatch = true;
+    let scoredCafes = cafes
+      .map((cafe: any) => {
+        const cafeHours = hoursMap[cafe.id] || [];
+        const scoreResult = calculateScoreLocally(cafe, cafeHours, userLat, userLon, preferences, true);
+        return {
+          cafe,
+          score: scoreResult.score,
+          reasons: scoreResult.reasons,
+          excluded: scoreResult.excluded,
+          distanceMiles: getDistance(userLat, userLon, cafe.latitude, cafe.longitude),
+        };
+      })
+      .filter((c: any) => !c.excluded);
 
-    // Dynamic sorting based on preferences.sort_by
-    scoredCafes.sort((a, b) => {
+    // Zero match compromise fallback
+    if (scoredCafes.length === 0) {
+      isExactMatch = false;
+      scoredCafes = cafes.map((cafe: any) => {
+        const cafeHours = hoursMap[cafe.id] || [];
+        const scoreResult = calculateScoreLocally(cafe, cafeHours, userLat, userLon, preferences, false);
+        return {
+          cafe,
+          score: scoreResult.score,
+          reasons: scoreResult.reasons,
+          excluded: false,
+          distanceMiles: getDistance(userLat, userLon, cafe.latitude, cafe.longitude),
+        };
+      });
+    }
+
+    // Sorting candidates
+    scoredCafes.sort((a: any, b: any) => {
       if (preferences.sort_by === 'distance') {
         return a.distanceMiles - b.distanceMiles;
       }
       if (preferences.sort_by === 'crowd') {
-        const crowdRank = { Low: 1, Moderate: 2, Busy: 3, Full: 4 };
+        const crowdRank: Record<string, number> = { Low: 1, Moderate: 2, Busy: 3, Full: 4 };
         const rankA = crowdRank[a.cafe.current_crowd_level || 'Low'] || 1;
         const rankB = crowdRank[b.cafe.current_crowd_level || 'Low'] || 1;
         if (rankA !== rankB) return rankA - rankB;
@@ -153,58 +223,91 @@ Rules:
       return b.score - a.score;
     });
 
-    const resultCount = Math.min(Math.max(preferences.max_results || 3, 1), 3);
-    const topCafes = scoredCafes.slice(0, resultCount).map((c) => c.cafe);
+    const maxResults = Math.min(Math.max(preferences.max_results || 3, 1), 3);
+    const topCafes = scoredCafes.slice(0, maxResults).map((c: any) => c.cafe);
 
-    console.log('[Edge Function DEBUG]');
-    console.log('Current user message:', query);
-    console.log('Parsed intent:', preferences.intent || 'recommend_cafe');
-    console.log('Parsed preferences:', preferences);
-    console.log('Requested result count:', resultCount);
-    console.log('Candidate cafe count:', cafes.length);
-    console.log('Ranked cafe names:', topCafes.map((c) => c.name));
-    console.log('Final returned cafe count:', topCafes.length);
+    const debugLog = {
+      intent: preferences.intent || 'recommend_cafe',
+      max_results: maxResults,
+      filters: {
+        wifi_required: preferences.wifi_required,
+        max_distance_miles: preferences.max_distance_miles,
+        open_now_required: preferences.open_now_required,
+        crowd_preference: preferences.crowd_preference,
+      },
+      candidate_count: cafes.length,
+      selected_cafe_ids: topCafes.map((c: any) => c.id),
+      ai_mode: 'OPENAI',
+      is_exact_match: isExactMatch,
+    };
+    console.log('[AI] mode=OPENAI payload=', JSON.stringify(debugLog));
 
-    // 5. Ask OpenAI to write a grounded natural language explanation
-    const explainPrompt = `You are the Café Study Spot AI Assistant for UC Irvine students.
-Given the user's request, the extracted preferences, and the top ${topCafes.length} matched cafés, explain why these cafés are recommended.
-Rules:
-1. ONLY use the provided café facts. Do not invent coordinates, hours, Wi-Fi speeds, names, or features.
-2. If Wi-Fi is unavailable or crowd status is not reported, state that.
-3. Be concise and student-friendly.
+    // Explanation Generation Call (Single concise explanation pass)
+    let explanation = '';
+    const explainPrompt = `You are the Café Study Spot Assistant for UC Irvine students.
+Explain the recommended study spots to the user in 100-200 tokens.
 
 User query: "${query}"
-Extracted preferences: ${JSON.stringify(preferences)}
-Cafes details: ${JSON.stringify(topCafes)}`;
+Is exact match: ${isExactMatch}
+Cafés facts: ${JSON.stringify(topCafes.map((c: any) => ({
+  name: c.name,
+  address: c.address,
+  wifi: c.wifi_available ? (c.wifi_quality || 'Available') : 'None',
+  crowd: c.current_crowd_level || 'Low',
+})))}
 
-    const explainResponse = await fetch(openaiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: 'You explain cafe recommendations to students using only verified database facts.' },
-          { role: 'user', content: explainPrompt },
-        ],
-      }),
-    });
+Rules:
+1. ONLY state verified database facts provided above. Never invent hours or speeds.
+2. If is exact match is false, clearly state: "I couldn't find an exact match for all requirements in our database, but here is the best available alternative:"
+3. Keep explanation concise (100-200 tokens).`;
 
-    const explainResult = await explainResponse.json();
-    const explanation = explainResult.choices[0]?.message?.content || 'Here are your top recommendations:';
+    try {
+      const explainRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openAiApiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 250,
+          messages: [
+            { role: 'system', content: 'You explain cafe recommendations using database facts only.' },
+            { role: 'user', content: explainPrompt },
+          ],
+        }),
+      });
 
-    // 6. Return response
+      if (explainRes.ok) {
+        const explainData = await explainRes.json();
+        explanation = explainData.choices[0]?.message?.content || '';
+      }
+    } catch (e) {
+      console.warn('Explanation generation API error:', e);
+    }
+
+    if (!explanation) {
+      if (!isExactMatch) {
+        explanation = `I couldn't find a café in our current database that matches all of those requirements, but here is the closest compromise option:\n\n`;
+      } else {
+        explanation = `Here are your top ${topCafes.length} café study spot recommendations:\n\n`;
+      }
+      topCafes.forEach((c: any, index: number) => {
+        const crowd = c.current_crowd_level || 'Low';
+        const wifi = c.wifi_available ? `Wi-Fi (${c.wifi_quality || 'Available'})` : 'No Wi-Fi';
+        explanation += `${index + 1}. **${c.name}** — **${crowd} crowd level**, **${wifi}**.\n`;
+      });
+    }
+
     return new Response(
       JSON.stringify({
         preferences,
         recommendations: topCafes,
         explanation,
+        is_exact_match: isExactMatch,
+        ai_mode: 'OPENAI',
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), {
@@ -214,41 +317,45 @@ Cafes details: ${JSON.stringify(topCafes)}`;
   }
 });
 
-// Helper for local scoring on the server
-function calculateScoreLocally(cafe, hours, userLat, userLon, prefs) {
+function calculateScoreLocally(cafe: any, hours: any[], userLat: number, userLon: number, prefs: any, enforceHardFilters = true) {
   let excluded = false;
-  const reasons = [];
+  const distanceMiles = getDistance(userLat, userLon, cafe.latitude, cafe.longitude);
+  const maxDistLimit = prefs?.max_distance_miles ?? prefs?.max_distance;
 
-  // Wifi filter
-  if (prefs?.wifi_required && !cafe.wifi_available) {
-    excluded = true;
+  if (enforceHardFilters) {
+    if (prefs?.wifi_required && !cafe.wifi_available) {
+      excluded = true;
+    }
+    if (maxDistLimit && distanceMiles > maxDistLimit) {
+      excluded = true;
+    }
+    const isNowRequired = prefs?.open_now_required ?? prefs?.open_now;
+    if (isNowRequired) {
+      const day = new Date().getDay();
+      const openHours = hours.filter((h: any) => h.day_of_week === day);
+      if (openHours.length === 0) excluded = true;
+    }
   }
 
-  if (excluded) return { score: 0, reasons, excluded: true };
+  if (excluded) return { score: 0, reasons: [], excluded: true };
 
-  // Calculate distance
-  const distanceMiles = getDistance(userLat, userLon, cafe.latitude, cafe.longitude);
   let distScore = 100;
   if (distanceMiles > 0.2) {
     distScore = Math.max(0, 100 - ((distanceMiles - 0.2) / 4.8) * 100);
   }
 
-  // Crowd level
   let crowdScore = 50;
   if (cafe.current_crowd_level === 'Low') crowdScore = 100;
   else if (cafe.current_crowd_level === 'Moderate') crowdScore = 75;
   else if (cafe.current_crowd_level === 'Busy') crowdScore = 35;
   else if (cafe.current_crowd_level === 'Full') crowdScore = 5;
 
-  // Quietness
   const quietVal = Number(cafe.avg_quietness) || 0;
   const quietScore = quietVal > 0 ? ((quietVal - 1) / 2) * 100 : 50;
 
-  // Aesthetics
   const aesVal = Number(cafe.avg_aesthetics) || 0;
   const aesScore = aesVal > 0 ? ((aesVal - 1) / 4) * 100 : 50;
 
-  // Wifi
   let wifiScore = 0;
   if (cafe.wifi_available) {
     if (cafe.wifi_quality === 'Excellent') wifiScore = 100;
@@ -261,13 +368,13 @@ function calculateScoreLocally(cafe, hours, userLat, userLon, prefs) {
 
   return {
     score: Math.round(finalScore),
-    reasons,
+    reasons: [],
     excluded: false,
   };
 }
 
-function getDistance(lat1, lon1, lat2, lon2) {
-  const R = 3958.8; // miles
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 3958.8;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
