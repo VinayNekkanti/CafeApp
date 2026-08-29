@@ -1,5 +1,14 @@
-export type CrowdLevel = 'Low' | 'Moderate' | 'Busy' | 'Full';
+export type CrowdLevel = number | 'Low' | 'Moderate' | 'Busy' | 'Full' | string;
 export type WifiQuality = 'Poor' | 'Good' | 'Excellent';
+
+export interface CafeEmployee {
+  id: string;
+  user_id: string;
+  cafe_id: string;
+  is_active: boolean;
+  created_at: string;
+  cafe_name?: string;
+}
 
 export interface Cafe {
   id: string;

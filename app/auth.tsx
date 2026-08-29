@@ -306,6 +306,19 @@ export default function AuthScreen() {
               </Text>
             </Pressable>
           </View>
+
+          {/* Employee Login Entry Point */}
+          <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: themeColors.border, alignItems: 'center' }}>
+            <Pressable
+              onPress={() => router.push('/employee/login')}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}
+            >
+              <Ionicons name="briefcase-outline" size={16} color={themeColors.primary} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.primary }}>
+                Café Employee Login
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

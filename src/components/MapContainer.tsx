@@ -12,12 +12,13 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import { Cafe, CafeHours } from '../types';
+import { Cafe, CafeHours, CrowdLevel } from '../types';
 import { THEME } from '../constants/theme';
 import { calculateDistance, formatDistance } from '../utils/distance';
 import { openCafeDirections } from '../utils/directions';
 import { RouteResult } from '../services/routing';
 import { getOpenStatus } from '../utils/hours';
+import { formatCrowdUpdatedAt } from '../utils/time';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 // Conditional import to prevent crash on web
@@ -536,11 +537,19 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     });
   }, [activeCafeIndex, cafes]);
 
-  const getCrowdMarkerColor = (crowd?: string | null) => {
-    if (crowd === 'Low') return '#10B981'; // Green
-    if (crowd === 'Moderate') return '#F59E0B'; // Orange
-    if (crowd === 'Busy') return '#EF4444'; // Red
-    if (crowd === 'Full') return '#7F1D1D'; // Maroon
+  const getCrowdMarkerColor = (crowd?: CrowdLevel | null) => {
+    const crowdStr = crowd !== null && crowd !== undefined ? String(crowd) : '';
+    const parsed = parseInt(crowdStr, 10);
+    if (!isNaN(parsed)) {
+      if (parsed <= 3) return '#10B981'; // Green
+      if (parsed <= 6) return '#F59E0B'; // Orange
+      if (parsed <= 8) return '#EF4444'; // Red
+      return '#7F1D1D'; // Maroon
+    }
+    if (crowdStr === 'Low') return '#10B981'; // Green
+    if (crowdStr === 'Moderate') return '#F59E0B'; // Orange
+    if (crowdStr === 'Busy') return '#EF4444'; // Red
+    if (crowdStr === 'Full') return '#7F1D1D'; // Maroon
     return '#6E5D53'; // Default Gray
   };
 
@@ -725,7 +734,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                   <View style={styles.cardFooter}>
                     <View style={[styles.badge, { backgroundColor: crowdColor + '1F' }]}>
                       <Text style={[styles.badgeText, { color: crowdColor }]}>
-                        {item.current_crowd_level || 'Low'} Crowd
+                        {item.current_crowd_level ? `${item.current_crowd_level}/10` : 'Low'} Crowd{formatCrowdUpdatedAt(item.crowd_updated_at, { compact: true }) ? ` · ${formatCrowdUpdatedAt(item.crowd_updated_at, { compact: true })}` : ''}
                       </Text>
                     </View>
                     <Text
@@ -751,7 +760,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       {/* Map View */}
       <MapView
         ref={mapRef}
-        provider={PROVIDER_GOOGLE}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={styles.map}
         initialRegion={initialRegion}
         showsUserLocation={true}
@@ -924,7 +933,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                 <View style={styles.cardFooter}>
                   <View style={[styles.badge, { backgroundColor: crowdColor + '1F' }]}>
                     <Text style={[styles.badgeText, { color: crowdColor }]}>
-                      {item.current_crowd_level || 'Low'} Crowd
+                      {item.current_crowd_level ? `${item.current_crowd_level}/10` : 'Low'} Crowd{formatCrowdUpdatedAt(item.crowd_updated_at, { compact: true }) ? ` · ${formatCrowdUpdatedAt(item.crowd_updated_at, { compact: true })}` : ''}
                     </Text>
                   </View>
                   <Text

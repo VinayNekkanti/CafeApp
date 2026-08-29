@@ -1,4 +1,4 @@
-import { Cafe, CafeHours, CafeImage, StudyEnvironmentRating, CafeReview } from '../types';
+import { Cafe, CafeHours, CafeImage, StudyEnvironmentRating, CafeReview, CafeEmployee } from '../types';
 import { supabase } from './supabase';
 
 /**
@@ -253,19 +253,25 @@ export async function submitCafeReview(cafeId: string, reviewText: string): Prom
     throw new Error('You must be signed in to submit a review.');
   }
 
-  const authenticatedUserUuid = user.id;
-  const outgoingUserId = user.id;
+  // Enforce 2-reviews per user per day limit
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
 
-  // Log ONLY current authenticated user UUID and outgoing user_id for comparison
-  console.log(`[RLS Debug] Authenticated user UUID: ${authenticatedUserUuid}`);
-  console.log(`[RLS Debug] Inserted user_id: ${outgoingUserId}`);
-  console.log(`[RLS Debug] Do UUIDs match? ${authenticatedUserUuid === outgoingUserId}`);
+  const { count, error: countError } = await supabase
+    .from('cafe_reviews')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .gte('created_at', todayStart.toISOString());
+
+  if (!countError && count !== null && count >= 2) {
+    throw new Error('Daily review limit reached. You can submit up to 2 reviews per day.');
+  }
 
   const { error } = await supabase
     .from('cafe_reviews')
     .insert({
       cafe_id: cafeId,
-      user_id: outgoingUserId,
+      user_id: user.id,
       review_text: cleanText,
     });
 
@@ -273,4 +279,95 @@ export async function submitCafeReview(cafeId: string, reviewText: string): Prom
     console.error('Supabase submitCafeReview failed:', error.message);
     throw new Error(error.message);
   }
+}
+
+/**
+ * Fetch publicly visible reviews for a specific café, returning initial 20 items and exact total count
+ */
+export async function getCafeReviews(cafeId: string): Promise<{ reviews: CafeReview[]; totalCount: number }> {
+  try {
+    const { data, count, error } = await supabase
+      .from('v_public_cafe_reviews')
+      .select('*', { count: 'exact' })
+      .eq('cafe_id', cafeId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.warn(`Note on fetching reviews for cafe ${cafeId}:`, error.message);
+      return { reviews: [], totalCount: 0 };
+    }
+
+    const reviews = (data || []).map((row: any) => ({
+      id: row.id,
+      cafe_id: row.cafe_id,
+      user_id: '',
+      review_text: row.review_text,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      user_display_name: row.safe_author_name || 'Anonymous Student',
+    }));
+
+    return {
+      reviews,
+      totalCount: count ?? reviews.length,
+    };
+  } catch (err) {
+    console.warn(`Unexpected error fetching reviews for cafe ${cafeId}:`, err);
+    return { reviews: [], totalCount: 0 };
+  }
+}
+
+/**
+ * Fetch employee mapping for currently authenticated user
+ */
+export async function getEmployeeAssignment(): Promise<CafeEmployee | null> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('cafe_employees')
+    .select('*, cafes(name)')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Employee Debug] Error checking employee assignment:', error.message);
+    return null;
+  }
+
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    user_id: data.user_id,
+    cafe_id: data.cafe_id,
+    is_active: data.is_active,
+    created_at: data.created_at,
+    cafe_name: data.cafes?.name || 'Assigned Café',
+  };
+}
+
+/**
+ * Submit crowd level update for employee's assigned café (1–10 integer)
+ */
+export async function submitEmployeeCrowdLevel(newLevel: number): Promise<{ success: boolean; cafe_name: string; crowd_level: number }> {
+  if (newLevel < 1 || newLevel > 10) {
+    throw new Error('Crowd level must be between 1 and 10.');
+  }
+
+  const { data, error } = await supabase.rpc('update_employee_crowd_level', {
+    new_level: Math.round(newLevel),
+  });
+
+  if (error) {
+    console.error('[Employee Debug] RPC update_employee_crowd_level failed:', error.message);
+    throw new Error(error.message || 'Unable to update crowd level. Please try again.');
+  }
+
+  return data;
 }

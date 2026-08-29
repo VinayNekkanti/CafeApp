@@ -30,6 +30,7 @@ export default function ProfileScreen() {
   const [favoriteCafes, setFavoriteCafes] = useState<Cafe[]>([]);
   const [hours, setHours] = useState<Record<string, CafeHours[]>>({});
   const [loadingFavorites, setLoadingFavorites] = useState(false);
+  const [employeeAssignment, setEmployeeAssignment] = useState<any>(null);
 
   const fetchFavorites = async () => {
     if (!user) return;
@@ -51,6 +52,16 @@ export default function ProfileScreen() {
     }
   };
 
+  const checkEmployee = async () => {
+    if (!user) {
+      setEmployeeAssignment(null);
+      return;
+    }
+    const { getEmployeeAssignment } = await import('../../src/services/data');
+    const emp = await getEmployeeAssignment();
+    setEmployeeAssignment(emp);
+  };
+
   const handleRemoveFavorite = async (cafeId: string) => {
     if (!user) return;
     setFavoriteCafes((prev) => prev.filter((c) => c.id !== cafeId));
@@ -62,10 +73,11 @@ export default function ProfileScreen() {
     }
   };
 
-  // Re-fetch favorites when screen gains focus
+  // Re-fetch favorites and employee status when screen gains focus
   useFocusEffect(
     useCallback(() => {
       fetchFavorites();
+      checkEmployee();
     }, [user])
   );
 
@@ -118,12 +130,20 @@ export default function ProfileScreen() {
         <View style={styles.avatarRow}>
           <View style={[styles.avatarCircle, { backgroundColor: themeColors.primary }]}>
             <Text style={styles.avatarLetter}>
-              {profile?.display_name ? profile.display_name.charAt(0).toUpperCase() : user.email?.charAt(0).toUpperCase() || 'U'}
+              {profile?.first_name?.trim()
+                ? profile.first_name.trim().charAt(0).toUpperCase()
+                : profile?.display_name?.trim()
+                ? profile.display_name.trim().charAt(0).toUpperCase()
+                : user.email
+                ? user.email.charAt(0).toUpperCase()
+                : 'U'}
             </Text>
           </View>
           <View style={styles.avatarContent}>
             <Text style={[styles.profileName, { color: themeColors.text }]}>
-              {profile?.display_name || 'UCI Student'}
+              {profile?.display_name?.trim() ||
+                [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim() ||
+                (user.email ? user.email.split('@')[0] : 'User')}
             </Text>
             <Text style={[styles.profileEmail, { color: themeColors.textMuted }]}>
               {user.email}
@@ -143,6 +163,37 @@ export default function ProfileScreen() {
           <Text style={[styles.logoutText, { color: themeColors.textMuted }]}>Log Out</Text>
         </Pressable>
       </View>
+
+      {/* Employee Quick Access Banner */}
+      {employeeAssignment && (
+        <Pressable
+          onPress={() => router.push('/employee/dashboard')}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: themeColors.primaryLight,
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            marginHorizontal: 16,
+            marginTop: 12,
+            borderRadius: 12,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Ionicons name="briefcase" size={20} color={themeColors.primary} />
+            <View>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: themeColors.primary }}>
+                Employee Portal
+              </Text>
+              <Text style={{ fontSize: 12, color: themeColors.textMuted }}>
+                Update live crowd for {employeeAssignment.cafe_name}
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={themeColors.primary} />
+        </Pressable>
+      )}
 
       {/* Favorites Title */}
       <View style={styles.sectionHeader}>

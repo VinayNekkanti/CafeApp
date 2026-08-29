@@ -181,19 +181,26 @@ function calculateCafeScore(
   // B. Crowd Level (Max 100 points)
   const crowd = cafe.current_crowd_level;
   let crowdScore = 50; // default neutral
-  if (crowd === 'Low') crowdScore = 100;
+
+  const parsedCrowdNum = typeof crowd === 'number' ? crowd : parseInt(String(crowd), 10);
+  if (!isNaN(parsedCrowdNum)) {
+    // Linear scale: Level 1 (empty) -> 100 pts, Level 10 (full) -> 10 pts
+    crowdScore = Math.max(10, 100 - (parsedCrowdNum - 1) * 10);
+  } else if (crowd === 'Low') crowdScore = 100;
   else if (crowd === 'Moderate') crowdScore = 75;
   else if (crowd === 'Busy') crowdScore = 35;
   else if (crowd === 'Full') crowdScore = 5;
 
   if (prefs?.preferred_crowd_levels && prefs.preferred_crowd_levels.length > 0) {
-    if (crowd && prefs.preferred_crowd_levels.includes(crowd)) {
+    if (crowd && prefs.preferred_crowd_levels.includes(crowd as any)) {
       crowdScore = 100;
       reasons.push(`Matches preferred crowd level (${crowd}).`);
     } else if (crowd) {
       crowdScore = 10; // penalty for mismatch
       reasons.push(`Busy status is currently: ${crowd}.`);
     }
+  } else if (!isNaN(parsedCrowdNum) && parsedCrowdNum <= 5) {
+    reasons.push(`Light crowd status (${parsedCrowdNum}/10).`);
   } else if (crowd === 'Low' || crowd === 'Moderate') {
     reasons.push(`Not crowded (Status: ${crowd}).`);
   }

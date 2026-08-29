@@ -6,6 +6,7 @@ import { THEME } from '../constants/theme';
 import { calculateDistance, formatDistance, estimateWalkingTime } from '../utils/distance';
 import { openCafeDirections } from '../utils/directions';
 import { getOpenStatus } from '../utils/hours';
+import { formatCrowdUpdatedAt } from '../utils/time';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 interface CafeCardProps {
@@ -42,19 +43,37 @@ export const CafeCard: React.FC<CafeCardProps> = ({
   // Get Crowd badge details
   const getCrowdBadeInfo = () => {
     const crowd = cafe.current_crowd_level || 'Low';
-    let text = crowd;
+    let text = String(crowd);
     let bgColor = themeColors.successLight;
     let textColor = themeColors.success;
 
-    if (crowd === 'Moderate') {
-      bgColor = themeColors.warningLight;
-      textColor = themeColors.warning;
-    } else if (crowd === 'Busy') {
-      bgColor = themeColors.accentLight;
-      textColor = themeColors.accent;
-    } else if (crowd === 'Full') {
-      bgColor = themeColors.dangerLight;
-      textColor = themeColors.danger;
+    const parsedNum = parseInt(text, 10);
+    if (!isNaN(parsedNum)) {
+      text = `${parsedNum}/10`;
+      if (parsedNum <= 3) {
+        bgColor = themeColors.successLight;
+        textColor = themeColors.success;
+      } else if (parsedNum <= 6) {
+        bgColor = themeColors.warningLight;
+        textColor = themeColors.warning;
+      } else if (parsedNum <= 8) {
+        bgColor = themeColors.accentLight;
+        textColor = themeColors.accent;
+      } else {
+        bgColor = themeColors.dangerLight;
+        textColor = themeColors.danger;
+      }
+    } else {
+      if (crowd === 'Moderate') {
+        bgColor = themeColors.warningLight;
+        textColor = themeColors.warning;
+      } else if (crowd === 'Busy') {
+        bgColor = themeColors.accentLight;
+        textColor = themeColors.accent;
+      } else if (crowd === 'Full') {
+        bgColor = themeColors.dangerLight;
+        textColor = themeColors.danger;
+      }
     }
 
     return { text, bgColor, textColor };
@@ -242,7 +261,7 @@ export const CafeCard: React.FC<CafeCardProps> = ({
           >
             <Ionicons name="people" size={12} color={crowdInfo.textColor} />
             <Text style={[styles.crowdText, { color: crowdInfo.textColor }]}>
-              {crowdInfo.text} Crowd
+              {crowdInfo.text} Crowd{formatCrowdUpdatedAt(cafe.crowd_updated_at, { compact: true }) ? ` · ${formatCrowdUpdatedAt(cafe.crowd_updated_at, { compact: true })}` : ''}
             </Text>
           </View>
 

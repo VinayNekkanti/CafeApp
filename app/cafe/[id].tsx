@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Linking,
@@ -14,12 +15,13 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocation } from '../../src/context/LocationContext';
-import { getCafes, getCafeHours, getFavorites, submitCafeReview, toggleFavorite } from '../../src/services/data';
-import { Cafe, CafeHours } from '../../src/types';
+import { getCafes, getCafeHours, getFavorites, submitCafeReview, getCafeReviews, toggleFavorite } from '../../src/services/data';
+import { Cafe, CafeHours, CafeReview } from '../../src/types';
 import { THEME } from '../../src/constants/theme';
 import { calculateDistance, formatDistance, estimateWalkingTime, estimateDrivingTime } from '../../src/utils/distance';
 import { openCafeDirections } from '../../src/utils/directions';
 import { getOpenStatus, formatWeeklyHours } from '../../src/utils/hours';
+import { formatCrowdUpdatedAt } from '../../src/utils/time';
 import ReviewModal from '../../src/components/ReviewModal';
 import LoadingScreen from '../../src/components/LoadingScreen';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -42,6 +44,27 @@ export default function CafeProfileScreen() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [imageError, setImageError] = useState(false);
 
+  // Reviews State
+  const [reviews, setReviews] = useState<CafeReview[]>([]);
+  const [totalReviewCount, setTotalReviewCount] = useState<number>(0);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [reviewsError, setReviewsError] = useState(false);
+
+  const fetchReviewsData = async (cafeId: string) => {
+    setReviewsLoading(true);
+    setReviewsError(false);
+    try {
+      const { reviews: revs, totalCount } = await getCafeReviews(cafeId);
+      setReviews(revs);
+      setTotalReviewCount(totalCount);
+    } catch (err) {
+      console.error('Error fetching cafe reviews:', err);
+      setReviewsError(true);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
   const fetchData = async () => {
     if (!id) return;
     setLoading(true);
@@ -54,6 +77,7 @@ export default function CafeProfileScreen() {
       if (selectedCafe) {
         const cafeHours = await getCafeHours(id);
         setHours(cafeHours);
+        await fetchReviewsData(id);
       }
 
       if (user) {
@@ -95,6 +119,9 @@ export default function CafeProfileScreen() {
   const handleReviewSubmit = async (reviewText: string) => {
     if (!cafe) return;
     await submitCafeReview(cafe.id, reviewText);
+    if (id) {
+      await fetchReviewsData(id);
+    }
   };
 
   useEffect(() => {
@@ -174,26 +201,49 @@ export default function CafeProfileScreen() {
 
   // Get Crowd badge details
   const getCrowdDetails = () => {
-    const crowd = cafe.current_crowd_level || 'Low';
+    const rawCrowd = cafe.current_crowd_level || 'Low';
+    let crowdStr = String(rawCrowd);
     let color = themeColors.success;
     let bgColor = themeColors.successLight;
     let desc = 'Plenty of open tables. Perfect for spreading out!';
 
-    if (crowd === 'Moderate') {
-      color = themeColors.warning;
-      bgColor = themeColors.warningLight;
-      desc = 'Some seating available. Comfortable volume.';
-    } else if (crowd === 'Busy') {
-      color = themeColors.accent;
-      bgColor = themeColors.accentLight;
-      desc = 'Sparse tables remaining. May need to share counter space.';
-    } else if (crowd === 'Full') {
-      color = themeColors.danger;
-      bgColor = themeColors.dangerLight;
-      desc = 'No seating left. Employees report maximum capacity.';
+    const parsedNum = parseInt(crowdStr, 10);
+    if (!isNaN(parsedNum)) {
+      crowdStr = `${parsedNum}/10`;
+      if (parsedNum <= 3) {
+        color = themeColors.success;
+        bgColor = themeColors.successLight;
+        desc = 'Light crowd. Plenty of open tables and quiet seating.';
+      } else if (parsedNum <= 6) {
+        color = themeColors.warning;
+        bgColor = themeColors.warningLight;
+        desc = 'Moderate crowd. Seating is available with steady activity.';
+      } else if (parsedNum <= 8) {
+        color = themeColors.accent;
+        bgColor = themeColors.accentLight;
+        desc = 'Busy. Sparse seating available; filling up rapidly.';
+      } else {
+        color = themeColors.danger;
+        bgColor = themeColors.dangerLight;
+        desc = 'Extremely crowded. Near or at maximum seating capacity.';
+      }
+    } else {
+      if (rawCrowd === 'Moderate') {
+        color = themeColors.warning;
+        bgColor = themeColors.warningLight;
+        desc = 'Some seating available. Comfortable volume.';
+      } else if (rawCrowd === 'Busy') {
+        color = themeColors.accent;
+        bgColor = themeColors.accentLight;
+        desc = 'Sparse tables remaining. May need to share counter space.';
+      } else if (rawCrowd === 'Full') {
+        color = themeColors.danger;
+        bgColor = themeColors.dangerLight;
+        desc = 'No seating left. Employees report maximum capacity.';
+      }
     }
 
-    return { crowd, color, bgColor, desc };
+    return { crowd: crowdStr, color, bgColor, desc };
   };
 
   const crowdDetails = getCrowdDetails();
@@ -298,14 +348,6 @@ export default function CafeProfileScreen() {
           <View style={styles.profileSection}>
             <View style={styles.sectionHeaderRow}>
               <Text style={[styles.sectionHeading, { color: themeColors.text }]}>Crowd Level</Text>
-              <Text style={[styles.updatedTimestamp, { color: themeColors.textLight }]}>
-                {cafe.crowd_updated_at
-                  ? `Updated ${new Date(cafe.crowd_updated_at).toLocaleTimeString([], {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}`
-                  : 'No update available'}
-              </Text>
             </View>
 
             <View style={[styles.crowdBannerFull, { backgroundColor: crowdDetails.bgColor }]}>
@@ -314,6 +356,11 @@ export default function CafeProfileScreen() {
                 <Text style={[styles.crowdStatusText, { color: crowdDetails.color }]}>
                   {crowdDetails.crowd} Status
                 </Text>
+                {formatCrowdUpdatedAt(cafe.crowd_updated_at) ? (
+                  <Text style={[styles.crowdTimestampInside, { color: themeColors.textMuted }]}>
+                    · {formatCrowdUpdatedAt(cafe.crowd_updated_at)}
+                  </Text>
+                ) : null}
               </View>
               <Text style={[styles.crowdDesc, { color: themeColors.textMuted }]}>
                 {crowdDetails.desc}
@@ -415,6 +462,70 @@ export default function CafeProfileScreen() {
                 <Text style={styles.leaveReviewBtnText}>Leave a Review!</Text>
               </View>
             </Pressable>
+          </View>
+
+          {/* Public Reviews List Section */}
+          <View style={[styles.profileSection, { marginTop: 16 }]}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionHeading, { color: themeColors.text }]}>
+                Reviews ({totalReviewCount})
+              </Text>
+            </View>
+
+            {reviewsLoading ? (
+              <View style={styles.reviewsLoadingBox}>
+                <ActivityIndicator color={themeColors.primary} size="small" />
+                <Text style={[styles.loadingReviewsText, { color: themeColors.textMuted }]}>Loading reviews...</Text>
+              </View>
+            ) : reviewsError ? (
+              <View style={[styles.emptyReviewBox, { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border }]}>
+                <Ionicons name="alert-circle-outline" size={24} color={themeColors.danger} />
+                <Text style={[styles.emptyReviewTitle, { color: themeColors.text }]}>Unable to load reviews right now.</Text>
+              </View>
+            ) : reviews.length === 0 ? (
+              <View style={[styles.emptyReviewBox, { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border }]}>
+                <Ionicons name="chatbubbles-outline" size={30} color={themeColors.textLight} />
+                <Text style={[styles.emptyReviewTitle, { color: themeColors.text }]}>No reviews yet.</Text>
+                <Text style={[styles.emptyReviewSub, { color: themeColors.textMuted }]}>
+                  Be the first to share your study experience!
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 12, marginTop: 8 }}>
+                {reviews.map((rev) => (
+                  <View
+                    key={rev.id}
+                    style={[
+                      styles.reviewCard,
+                      { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border },
+                    ]}
+                  >
+                    <View style={styles.reviewCardHeader}>
+                      <View style={styles.reviewerRow}>
+                        <View style={[styles.reviewerAvatar, { backgroundColor: themeColors.primary }]}>
+                          <Text style={styles.reviewerAvatarText}>
+                            {(rev.user_display_name || 'A').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={[styles.reviewerName, { color: themeColors.text }]}>
+                          {rev.user_display_name || 'Anonymous Student'}
+                        </Text>
+                      </View>
+                      <Text style={[styles.reviewDate, { color: themeColors.textLight }]}>
+                        {new Date(rev.created_at).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </Text>
+                    </View>
+                    <Text style={[styles.reviewBodyText, { color: themeColors.text }]}>
+                      {rev.review_text}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -586,11 +697,16 @@ const styles = StyleSheet.create({
   crowdStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
   },
   crowdStatusText: {
     fontSize: THEME.typography.sizes.sm,
     fontWeight: 'bold',
+  },
+  crowdTimestampInside: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   crowdDesc: {
     fontSize: THEME.typography.sizes.xs,
@@ -696,5 +812,69 @@ const styles = StyleSheet.create({
   reviewActionSub: {
     fontSize: 11,
     marginTop: 2,
+  },
+  reviewsLoadingBox: {
+    paddingVertical: THEME.spacing.md,
+    alignItems: 'center',
+  },
+  loadingReviewsText: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  emptyReviewBox: {
+    padding: THEME.spacing.lg,
+    borderRadius: THEME.roundness.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  emptyReviewTitle: {
+    fontSize: THEME.typography.sizes.sm,
+    fontWeight: 'bold',
+    marginTop: 4,
+  },
+  emptyReviewSub: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  reviewCard: {
+    padding: THEME.spacing.md,
+    borderRadius: THEME.roundness.md,
+    borderWidth: 1,
+    gap: 8,
+  },
+  reviewCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  reviewerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reviewerAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewerAvatarText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  reviewerName: {
+    fontSize: THEME.typography.sizes.xs,
+    fontWeight: 'bold',
+  },
+  reviewDate: {
+    fontSize: 11,
+  },
+  reviewBodyText: {
+    fontSize: THEME.typography.sizes.sm,
+    lineHeight: 20,
   },
 });

@@ -210,9 +210,14 @@ Rules:
         return a.distanceMiles - b.distanceMiles;
       }
       if (preferences.sort_by === 'crowd') {
-        const crowdRank: Record<string, number> = { Low: 1, Moderate: 2, Busy: 3, Full: 4 };
-        const rankA = crowdRank[a.cafe.current_crowd_level || 'Low'] || 1;
-        const rankB = crowdRank[b.cafe.current_crowd_level || 'Low'] || 1;
+        const getRank = (lvl: any) => {
+          const num = parseInt(String(lvl), 10);
+          if (!isNaN(num)) return num;
+          const crowdRank: Record<string, number> = { Low: 2, Moderate: 5, Busy: 8, Full: 10 };
+          return crowdRank[lvl] || 5;
+        };
+        const rankA = getRank(a.cafe.current_crowd_level);
+        const rankB = getRank(b.cafe.current_crowd_level);
         if (rankA !== rankB) return rankA - rankB;
       }
       if (preferences.sort_by === 'quietness') {
@@ -253,7 +258,7 @@ Cafés facts: ${JSON.stringify(topCafes.map((c: any) => ({
   name: c.name,
   address: c.address,
   wifi: c.wifi_available ? (c.wifi_quality || 'Available') : 'None',
-  crowd: c.current_crowd_level || 'Low',
+  crowd: c.current_crowd_level ? `${c.current_crowd_level}/10` : 'Low',
 })))}
 
 Rules:
@@ -293,7 +298,7 @@ Rules:
         explanation = `Here are your top ${topCafes.length} café study spot recommendations:\n\n`;
       }
       topCafes.forEach((c: any, index: number) => {
-        const crowd = c.current_crowd_level || 'Low';
+        const crowd = c.current_crowd_level ? `${c.current_crowd_level}/10` : 'Low';
         const wifi = c.wifi_available ? `Wi-Fi (${c.wifi_quality || 'Available'})` : 'No Wi-Fi';
         explanation += `${index + 1}. **${c.name}** — **${crowd} crowd level**, **${wifi}**.\n`;
       });
@@ -345,10 +350,14 @@ function calculateScoreLocally(cafe: any, hours: any[], userLat: number, userLon
   }
 
   let crowdScore = 50;
-  if (cafe.current_crowd_level === 'Low') crowdScore = 100;
-  else if (cafe.current_crowd_level === 'Moderate') crowdScore = 75;
-  else if (cafe.current_crowd_level === 'Busy') crowdScore = 35;
-  else if (cafe.current_crowd_level === 'Full') crowdScore = 5;
+  const crowdVal = cafe.current_crowd_level;
+  const parsedCrowd = typeof crowdVal === 'number' ? crowdVal : parseInt(String(crowdVal), 10);
+  if (!isNaN(parsedCrowd)) {
+    crowdScore = Math.max(10, 100 - (parsedCrowd - 1) * 10);
+  } else if (crowdVal === 'Low') crowdScore = 100;
+  else if (crowdVal === 'Moderate') crowdScore = 75;
+  else if (crowdVal === 'Busy') crowdScore = 35;
+  else if (crowdVal === 'Full') crowdScore = 5;
 
   const quietVal = Number(cafe.avg_quietness) || 0;
   const quietScore = quietVal > 0 ? ((quietVal - 1) / 2) * 100 : 50;

@@ -8,7 +8,11 @@
     "scheme": "cafeapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cafeapp.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "CafeApp needs your location to display nearby coffee shops and calculate directions."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +21,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.cafeapp.app"
     },
     "web": {
       "bundler": "metro",
