@@ -60,7 +60,7 @@ serve(async (req) => {
     // Build context-aware prompt using lastPreferences and recent message turns
     const recentTurns = (history || []).slice(-4).map((m: any) => `${m.sender}: ${m.text}`).join('\n');
 
-    const extractSystemPrompt = `You are an AI Assistant for UC Irvine students seeking café study spots.
+    const extractSystemPrompt = `You are an AI Assistant for people seeking café spots. The most often use cases that users will ask you will be in regards to studying. However they can also ask for cafes to just visit.'
 Classify the user message into one of these intents:
 - "general_chat": Casual greetings or non-recommendation remarks (e.g. "hi", "hello", "thanks", "what can you do?")
 - "recommend_cafe": A new request for café recommendations
