@@ -11,8 +11,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Cafe, CafeHours, CrowdLevel } from '../types';
-import { THEME, crowdLabel } from '../constants/theme';
+import { Cafe, CafeHours } from '../types';
+import { THEME, crowdLabel, crowdLevelNumber } from '../constants/theme';
 import { calculateDistance, formatDistance } from '../utils/distance';
 import { openCafeDirections } from '../utils/directions';
 import { RouteResult } from '../services/routing';
@@ -551,16 +551,6 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       }
     });
   }, [activeCafeIndex, cafes, themeColors]);
-
-  // Crowd is drawn as a meter + word, never a color — see design handoff README.
-  const crowdLevelNumber = (crowd?: CrowdLevel | null): number => {
-    const parsed = typeof crowd === 'number' ? crowd : parseInt(String(crowd ?? ''), 10);
-    if (!isNaN(parsed)) return Math.min(10, Math.max(1, parsed));
-    if (crowd === 'Moderate') return 5;
-    if (crowd === 'Busy') return 8;
-    if (crowd === 'Full') return 10;
-    return 2; // 'Low' or unknown
-  };
 
   // Fallback UI and interactive UI for Web
   if (Platform.OS === 'web') {

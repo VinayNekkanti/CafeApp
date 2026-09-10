@@ -95,5 +95,15 @@ export const CROWD_BANDS = [
 export const crowdLabel = (n: number) =>
   (CROWD_BANDS.find(b => n <= b.max) ?? CROWD_BANDS[3]).label;
 
+/** Normalizes the mixed number | 'Low'/'Moderate'/'Busy'/'Full' crowd value into 1-10. */
+export const crowdLevelNumber = (crowd?: number | string | null): number => {
+  const parsed = typeof crowd === 'number' ? crowd : parseInt(String(crowd ?? ''), 10);
+  if (!isNaN(parsed)) return Math.min(10, Math.max(1, parsed));
+  if (crowd === 'Moderate') return 5;
+  if (crowd === 'Busy') return 8;
+  if (crowd === 'Full') return 10;
+  return 2; // 'Low' or unknown
+};
+
 export const THEME = { colors: COLORS, spacing: SPACING, radius: RADIUS, fonts: FONTS, type: TYPE, shadow: SHADOW, motion: MOTION };
 export default THEME;
