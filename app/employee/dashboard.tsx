@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
@@ -18,10 +17,11 @@ import { THEME } from '../../src/constants/theme';
 import LoadingScreen from '../../src/components/LoadingScreen';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
+// NOTE: not yet migrated to the Classical design (see design handoff README) —
+// this is a minimal compile fix onto the new flat theme shape, not a redesign.
 export default function EmployeeDashboardScreen() {
   const router = useRouter();
-  const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
-  const themeColors = THEME.colors[colorScheme];
+  const themeColors = THEME.colors;
   const { signOut, user } = useAuth();
 
   const [assignment, setAssignment] = useState<CafeEmployee | null>(null);
@@ -126,8 +126,8 @@ export default function EmployeeDashboardScreen() {
   };
 
   const getLevelColor = (level: number) => {
-    if (level <= 3) return themeColors.success;
-    if (level <= 6) return themeColors.warning;
+    if (level <= 3) return themeColors.accent700;
+    if (level <= 6) return themeColors.accent600;
     if (level <= 8) return themeColors.accent;
     return themeColors.danger;
   };
@@ -143,16 +143,16 @@ export default function EmployeeDashboardScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: themeColors.bg }]}>
       {/* Top App Bar */}
-      <View style={[styles.topBar, { backgroundColor: themeColors.surface, borderBottomColor: themeColors.border }]}>
+      <View style={[styles.topBar, { backgroundColor: themeColors.surface, borderBottomColor: themeColors.divider }]}>
         <View>
-          <Text style={[styles.portalBadge, { color: themeColors.primary }]}>EMPLOYEE PORTAL</Text>
+          <Text style={[styles.portalBadge, { color: themeColors.accent700 }]}>EMPLOYEE PORTAL</Text>
           <Text style={[styles.cafeTitle, { color: themeColors.text }]}>
             {cafe?.name || assignment.cafe_name}
           </Text>
         </View>
-        <Pressable onPress={handleSignOut} style={[styles.signOutBtn, { borderColor: themeColors.border }]}>
+        <Pressable onPress={handleSignOut} style={[styles.signOutBtn, { borderColor: themeColors.divider }]}>
           <Ionicons name="log-out-outline" size={18} color={themeColors.danger} />
           <Text style={[styles.signOutText, { color: themeColors.danger }]}>Sign Out</Text>
         </Pressable>
@@ -160,16 +160,16 @@ export default function EmployeeDashboardScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Current Live Status Card */}
-        <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+        <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.divider }]}>
           <View style={styles.cardHeaderRow}>
-            <Ionicons name="location" size={20} color={themeColors.primary} />
+            <Ionicons name="location" size={20} color={themeColors.accent700} />
             <Text style={[styles.cardTitle, { color: themeColors.text }]}>Assigned Location</Text>
           </View>
           <Text style={[styles.addressText, { color: themeColors.textMuted }]}>
             {cafe?.address || 'Verified Store Location'}
           </Text>
 
-          <View style={[styles.statusBanner, { backgroundColor: themeColors.surfaceMuted }]}>
+          <View style={[styles.statusBanner, { backgroundColor: themeColors.surfaceAlt }]}>
             <Text style={[styles.statusLabel, { color: themeColors.textMuted }]}>Current Recorded Crowd Level</Text>
             <View style={styles.statusRow}>
               <Text style={[styles.statusValue, { color: getLevelColor(selectedLevel) }]}>
@@ -183,7 +183,7 @@ export default function EmployeeDashboardScreen() {
         </View>
 
         {/* Update Form Card */}
-        <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+        <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.divider }]}>
           <Text style={[styles.questionTitle, { color: themeColors.text }]}>Current crowd level?</Text>
           <Text style={[styles.questionSubtitle, { color: themeColors.textMuted }]}>
             Select a value from 1 (empty) to 10 (fully packed):
@@ -195,20 +195,20 @@ export default function EmployeeDashboardScreen() {
                 styles.messageBox,
                 {
                   backgroundColor:
-                    statusMessage.type === 'success' ? themeColors.successLight : themeColors.dangerLight,
+                    statusMessage.type === 'success' ? themeColors.accent100 : themeColors.danger + '1A',
                 },
               ]}
             >
               <Ionicons
                 name={statusMessage.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
                 size={20}
-                color={statusMessage.type === 'success' ? themeColors.success : themeColors.danger}
+                color={statusMessage.type === 'success' ? themeColors.accent700 : themeColors.danger}
               />
               <Text
                 style={[
                   styles.messageText,
                   {
-                    color: statusMessage.type === 'success' ? themeColors.success : themeColors.danger,
+                    color: statusMessage.type === 'success' ? themeColors.accent700 : themeColors.danger,
                   },
                 ]}
               >
@@ -228,7 +228,7 @@ export default function EmployeeDashboardScreen() {
                   onPress={() => setSelectedLevel(num)}
                   style={[
                     styles.scalePill,
-                    { borderColor: isSelected ? levelColor : themeColors.border },
+                    { borderColor: isSelected ? levelColor : themeColors.divider },
                     isSelected && { backgroundColor: levelColor },
                   ]}
                 >
@@ -246,7 +246,7 @@ export default function EmployeeDashboardScreen() {
           </View>
 
           {/* Dynamic Rating Feedback */}
-          <View style={[styles.feedbackBox, { backgroundColor: themeColors.surfaceMuted }]}>
+          <View style={[styles.feedbackBox, { backgroundColor: themeColors.surfaceAlt }]}>
             <View style={styles.feedbackHeader}>
               <Text style={[styles.feedbackLevelText, { color: getLevelColor(selectedLevel) }]}>
                 Level {selectedLevel} / 10
@@ -263,7 +263,7 @@ export default function EmployeeDashboardScreen() {
             disabled={updating}
             style={[
               styles.updateBtn,
-              { backgroundColor: themeColors.primary },
+              { backgroundColor: themeColors.accent700 },
               updating && { opacity: 0.7 },
             ]}
           >
