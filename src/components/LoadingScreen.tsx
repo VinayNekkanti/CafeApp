@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { THEME } from '../constants/theme';
 
 interface LoadingScreenProps {
@@ -7,12 +7,11 @@ interface LoadingScreenProps {
 }
 
 export const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Brewing your coffee spot list...' }) => {
-  const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
-  const themeColors = THEME.colors[colorScheme];
+  const themeColors = THEME.colors;
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-      <ActivityIndicator size="large" color={themeColors.primary} />
+    <View style={[styles.container, { backgroundColor: themeColors.bg }]}>
+      <ActivityIndicator size="large" color={themeColors.accent700} />
       <Text style={[styles.message, { color: themeColors.textMuted }]}>{message}</Text>
     </View>
   );
@@ -27,8 +26,7 @@ const styles = StyleSheet.create({
   },
   message: {
     marginTop: THEME.spacing.md,
-    fontSize: THEME.typography.sizes.md,
-    fontWeight: '500',
+    ...THEME.type.body,
     textAlign: 'center',
   },
 });

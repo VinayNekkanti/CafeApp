@@ -1,8 +1,18 @@
+import {
+  CormorantGaramond_400Regular,
+  CormorantGaramond_400Regular_Italic,
+  CormorantGaramond_500Medium,
+  CormorantGaramond_600SemiBold,
+} from '@expo-google-fonts/cormorant-garamond';
+import {
+  Lora_400Regular,
+  Lora_400Regular_Italic,
+  Lora_500Medium,
+} from '@expo-google-fonts/lora';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
@@ -27,6 +37,14 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     // Keep SpaceMono since the template relies on it
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    // Classical design system: Cormorant Garamond (display) over Lora (body)
+    CormorantGaramond_400Regular,
+    CormorantGaramond_400Regular_Italic,
+    CormorantGaramond_500Medium,
+    CormorantGaramond_600SemiBold,
+    Lora_400Regular,
+    Lora_400Regular_Italic,
+    Lora_500Medium,
   });
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -54,8 +72,8 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
-  const themeColors = THEME.colors[colorScheme];
+  // Classical is a single warm-paper palette — no dark-mode branch.
+  const themeColors = THEME.colors;
   const router = useRouter();
   const segments = useSegments();
   const { user, isProfileComplete, loading: authLoading } = useAuth();
@@ -86,15 +104,17 @@ function RootLayoutNav() {
     <Stack
       screenOptions={{
         headerStyle: {
-          backgroundColor: themeColors.surface,
+          backgroundColor: themeColors.bg,
         },
+        headerShadowVisible: false,
         headerTitleStyle: {
           color: themeColors.text,
-          fontWeight: 'bold',
+          fontFamily: THEME.fonts.displaySemi,
+          fontSize: 19,
         },
-        headerTintColor: themeColors.primary,
+        headerTintColor: themeColors.accent700,
         contentStyle: {
-          backgroundColor: themeColors.background,
+          backgroundColor: themeColors.bg,
         },
       }}
     >
