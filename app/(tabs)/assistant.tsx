@@ -1,7 +1,5 @@
 import React, { useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -11,18 +9,19 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { ArrowRight, ChevronRight } from 'lucide-react-native';
 import { supabase } from '../../src/services/supabase';
 import { useLocation } from '../../src/context/LocationContext';
 import { getCafes, getCafeHoursBatch } from '../../src/services/data';
 import { Cafe, CafeHours, StructuredPreferences } from '../../src/types';
-import { THEME } from '../../src/constants/theme';
+import { THEME, crowdLevelNumber } from '../../src/constants/theme';
+import { Divider, Kicker, Chip, Plate } from '../../src/components/classical';
 import { rankCafes } from '../../src/utils/recommendation';
-import { calculateDistance } from '../../src/utils/distance';
-import CafeCard from '../../src/components/CafeCard';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { calculateDistance, formatDistance, estimateWalkingTime } from '../../src/utils/distance';
+
+const { colors: C, spacing: SPACING, radius: RADIUS, type: TYPE } = THEME;
 
 interface Message {
   id: string;
@@ -32,18 +31,41 @@ interface Message {
   loading?: boolean;
 }
 
+const STARTER_PROMPTS = [
+  { label: 'Quiet & not packed', text: 'Quiet place near me with fast wifi that is not packed' },
+  { label: 'Open late', text: 'Somewhere open late tonight' },
+];
+
+/** A recommendation pick — hangs below the assistant bubble, full width. */
+function PickRow({ cafe, userLat, userLon, onPress }: { cafe: Cafe; userLat: number; userLon: number; onPress: () => void }) {
+  const distanceMiles = calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude);
+  const walkMins = estimateWalkingTime(distanceMiles);
+  const crowdLevel = crowdLevelNumber(cafe.current_crowd_level);
+  const wifi = cafe.wifi_available ? `Wi-Fi ${cafe.wifi_quality || 'Available'}` : 'No Wi-Fi';
+
+  return (
+    <Pressable onPress={onPress} style={styles.pickRow}>
+      <Plate size={44} source={cafe.image_url ? { uri: cafe.image_url } : null} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[TYPE.listTitle, { color: C.text }]} numberOfLines={1}>{cafe.name}</Text>
+        <Text style={[TYPE.metaSmall, { color: C.textMuted, marginTop: 2 }]} numberOfLines={1}>
+          {formatDistance(distanceMiles)} · {walkMins} min · {crowdLevel}/10 crowd · {wifi}
+        </Text>
+      </View>
+      <ChevronRight size={14} color={C.accent700} strokeWidth={1.8} />
+    </Pressable>
+  );
+}
+
 export default function AIAssistantScreen() {
   const router = useRouter();
-  const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
-  const themeColors = THEME.colors[colorScheme];
   const { location } = useLocation();
 
-  // State
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
       sender: 'assistant',
-      text: "Hi there! I'm your Café Study Spot Assistant. Describe what you're looking for (e.g. 'I need a quiet place near me with fast Wi-Fi that isn't packed right now') and I'll find the perfect match!",
+      text: "Tell me what you need — quiet, fast Wi-Fi, open late — and I'll match it against what staff reported in the last hour.",
     },
   ]);
   const [inputText, setInputText] = useState('');
@@ -54,16 +76,15 @@ export default function AIAssistantScreen() {
   const flatListRef = useRef<FlatList>(null);
 
   const handleSend = async () => {
-    if (!inputText.trim()) return;
-
     const userMessageText = inputText.trim();
+    if (!userMessageText) return;
+
     setInputText('');
     setLoading(true);
 
     const userMsgId = Math.random().toString();
     const assistantMsgId = Math.random().toString();
 
-    // 1. Add user message and temporary loading assistant bubble
     setMessages((prev) => [
       ...prev,
       { id: userMsgId, sender: 'user', text: userMessageText },
@@ -73,7 +94,6 @@ export default function AIAssistantScreen() {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
-      // Fetch café hours in batch to ensure ranking works
       const cafesList = await getCafes();
       const cafeIds = cafesList.map((c) => c.id);
       const hoursMap = await getCafeHoursBatch(cafeIds);
@@ -81,7 +101,6 @@ export default function AIAssistantScreen() {
 
       let responseData: { preferences: StructuredPreferences; recommendations: Cafe[]; explanation: string; is_exact_match?: boolean };
 
-      // 2. Attempt Edge Function invocation with fallback
       try {
         const { data, error } = await supabase.functions.invoke('recommend-cafes', {
           body: {
@@ -116,7 +135,6 @@ export default function AIAssistantScreen() {
         }
       }
 
-      // 3. Update assistant bubble with actual recommendation results
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantMsgId
@@ -164,7 +182,6 @@ export default function AIAssistantScreen() {
   ) => {
     const qTrim = query.trim().toLowerCase();
 
-    // Check greeting / non-search message
     if (qTrim === 'hi' || qTrim === 'hello' || qTrim === 'hey' || qTrim.includes('what can you do') || qTrim === 'thanks' || qTrim === 'thank you') {
       const prefs: StructuredPreferences = { intent: 'general_chat' };
       console.log('[AI] mode=LOCAL_FALLBACK payload=', JSON.stringify({
@@ -189,7 +206,6 @@ export default function AIAssistantScreen() {
       intent: isModify ? 'modify_recommendation' : 'recommend_cafe',
     };
 
-    // Result count parsing
     if (qTrim.includes('1') || qTrim.includes('one') || qTrim.includes('single') || qTrim.includes('closest cafe')) {
       prefs.max_results = 1;
     } else if (qTrim.includes('2') || qTrim.includes('two') || qTrim.includes('pair')) {
@@ -200,7 +216,6 @@ export default function AIAssistantScreen() {
       prefs.max_results = 3;
     }
 
-    // Distance parsing
     if (qTrim.includes('1 mile') || qTrim.includes('within 1')) {
       prefs.max_distance_miles = 1;
     } else if (qTrim.includes('2 mile') || qTrim.includes('within 2')) {
@@ -209,7 +224,6 @@ export default function AIAssistantScreen() {
       prefs.max_distance_miles = 3;
     }
 
-    // Sort & filter parsing
     if (qTrim.includes('closest') || qTrim.includes('nearest') || qTrim.includes('close') || qTrim.includes('nearby')) {
       prefs.sort_by = 'distance';
     } else if (qTrim.includes('least crowded') || qTrim.includes('unpacked') || qTrim.includes('not crowded') || qTrim.includes('empty') || qTrim.includes('less crowded')) {
@@ -243,22 +257,16 @@ export default function AIAssistantScreen() {
       const c = finalRecommendations[0];
       const crowd = c.current_crowd_level || 'Low';
       const wifi = c.wifi_available ? `Wi-Fi (${c.wifi_quality || 'Available'})` : 'No Wi-Fi';
-      explanation = `Here is the top match for your request:\n\n1. **${c.name}** — **${crowd} crowd level**, **${wifi}**, located at **${c.address}**.\n\n💡 Tap on the card below to view full details or navigate there!`;
+      explanation = `Here is the top match for your request:\n\n${c.name} — ${crowd} crowd level, ${wifi}, located at ${c.address}.\n\nTap on the pick below to view full details or navigate there.`;
     } else {
       explanation = `Here are the top ${finalRecommendations.length} recommendations based on your request:\n\n`;
-      finalRecommendations.forEach((c, index) => {
+      finalRecommendations.forEach((c) => {
         const crowd = c.current_crowd_level || 'Low';
         const wifi = c.wifi_available ? `Wi-Fi (${c.wifi_quality || 'Available'})` : 'No Wi-Fi';
-        explanation += `${index + 1}. **${c.name}** — **${crowd} crowd level**, **${wifi}**.\n\n`;
+        explanation += `${c.name} — ${crowd} crowd level, ${wifi}.\n`;
       });
-      explanation += `💡 Tap on any café card below to view details, verify hours, or check location routing!`;
+      explanation += `\nTap any pick below to view details, verify hours, or check location routing.`;
     }
-
-    return {
-      preferences: prefs,
-      recommendations: finalRecommendations,
-      explanation,
-    };
 
     return {
       preferences: prefs,
@@ -268,66 +276,45 @@ export default function AIAssistantScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         style={styles.keyboardView}
       >
-        {/* Messages list */}
+        <View style={styles.header}>
+          <Text style={[TYPE.screenTitle, { color: C.text }]}>Assistant</Text>
+          <Kicker style={{ marginTop: 6 }}>Describe the table you want</Kicker>
+          <Divider style={{ marginTop: SPACING.md }} />
+        </View>
+
         <FlatList
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
-            <View
-              style={[
-                styles.messageRow,
-                item.sender === 'user' ? styles.userRow : styles.assistantRow,
-              ]}
-            >
-              {/* Bubble */}
-              <View
-                style={[
-                  styles.bubble,
-                  item.sender === 'user'
-                    ? { backgroundColor: themeColors.primary, borderBottomRightRadius: 2 }
-                    : { backgroundColor: themeColors.surface, borderBottomLeftRadius: 2, borderColor: themeColors.border, borderWidth: 1 },
-                ]}
-              >
+            <View style={[styles.messageWrap, item.sender === 'user' ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
+              <View style={[styles.bubble, item.sender === 'user' ? styles.userBubble : styles.assistantBubble]}>
                 {item.loading ? (
-                  <View style={styles.loadingBubble}>
-                    <ActivityIndicator size="small" color={themeColors.primary} />
-                    <Text style={[styles.loadingText, { color: themeColors.textMuted }]}>
-                      Brewing recommendations...
-                    </Text>
-                  </View>
+                  <Kicker>Looking…</Kicker>
                 ) : (
-                  <Text
-                    style={[
-                      styles.messageText,
-                      { color: item.sender === 'user' ? '#FFF' : themeColors.text },
-                    ]}
-                  >
+                  <Text style={[TYPE.body, { fontSize: 14.5, color: item.sender === 'user' ? C.inverseText : C.text }]}>
                     {item.text}
                   </Text>
                 )}
               </View>
 
-              {/* Cafe Recommendations Cards list rendered inside chat bubble */}
               {item.recommendations && item.recommendations.length > 0 && (
-                <View style={styles.carouselWrapper}>
+                <View style={styles.picksWrap}>
                   {item.recommendations.map((cafe: Cafe) => (
-                    <View key={cafe.id} style={styles.cardItem}>
-                      <CafeCard
-                        cafe={cafe}
-                        hours={hours[cafe.id] || []}
-                        userLat={location.latitude}
-                        userLon={location.longitude}
-                        onPress={() => router.push(`/cafe/${cafe.id}`)}
-                      />
-                    </View>
+                    <PickRow
+                      key={cafe.id}
+                      cafe={cafe}
+                      userLat={location.latitude}
+                      userLon={location.longitude}
+                      onPress={() => router.push(`/cafe/${cafe.id}`)}
+                    />
                   ))}
                 </View>
               )}
@@ -335,34 +322,31 @@ export default function AIAssistantScreen() {
           )}
         />
 
-        {/* Input area */}
-        <View
-          style={[
-            styles.inputRow,
-            { backgroundColor: themeColors.surface, borderTopColor: themeColors.border },
-          ]}
-        >
-          <TextInput
-            placeholder="Type your study needs..."
-            placeholderTextColor={themeColors.textLight}
-            style={[styles.input, { color: themeColors.text, borderColor: themeColors.border }]}
-            value={inputText}
-            onChangeText={setInputText}
-            editable={!loading}
-            onSubmitEditing={handleSend}
-          />
-          <Pressable
-            onPress={handleSend}
-            disabled={loading || !inputText.trim()}
-            style={({ pressed }) => [
-              styles.sendBtn,
-              { backgroundColor: themeColors.primary },
-              (loading || !inputText.trim()) && { opacity: 0.5 },
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <Ionicons name="send" size={16} color="#FFF" />
-          </Pressable>
+        <View style={styles.composerWrap}>
+          <View style={styles.composerRow}>
+            <TextInput
+              placeholder="Quiet, fast Wi-Fi, near me…"
+              placeholderTextColor={C.textLight}
+              style={styles.input}
+              value={inputText}
+              onChangeText={setInputText}
+              editable={!loading}
+              onSubmitEditing={() => handleSend()}
+              returnKeyType="send"
+            />
+            <Pressable
+              onPress={() => handleSend()}
+              disabled={loading || !inputText.trim()}
+              style={[styles.sendBtn, (loading || !inputText.trim()) && { opacity: 0.4 }]}
+            >
+              <ArrowRight size={17} color={C.accent700} strokeWidth={1.7} />
+            </Pressable>
+          </View>
+          <View style={styles.promptsRow}>
+            {STARTER_PROMPTS.map((p) => (
+              <Chip key={p.label} label={p.label} onPress={() => setInputText(p.text)} />
+            ))}
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -370,75 +354,81 @@ export default function AIAssistantScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
+  container: { flex: 1, backgroundColor: C.bg },
+  keyboardView: { flex: 1 },
+  header: {
+    paddingHorizontal: SPACING.screen,
+    paddingTop: 4,
   },
   listContent: {
-    padding: THEME.spacing.md,
-    gap: THEME.spacing.md,
+    paddingHorizontal: SPACING.screen,
+    paddingTop: SPACING.sm,
     paddingBottom: 24,
+    gap: SPACING.lg,
   },
-  messageRow: {
-    flexDirection: 'column',
-    maxWidth: '85%',
-  },
-  userRow: {
-    alignSelf: 'flex-end',
-  },
-  assistantRow: {
-    alignSelf: 'flex-start',
-    maxWidth: '92%',
+  messageWrap: {
+    width: '100%',
   },
   bubble: {
-    paddingHorizontal: THEME.spacing.md,
-    paddingVertical: THEME.spacing.sm,
-    borderRadius: THEME.roundness.md,
+    maxWidth: '88%',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
   },
-  messageText: {
-    fontSize: THEME.typography.sizes.sm,
-    lineHeight: 20,
+  assistantBubble: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: C.divider,
   },
-  loadingBubble: {
+  userBubble: {
+    backgroundColor: C.text,
+  },
+  picksWrap: {
+    marginTop: SPACING.md,
+    width: '100%',
+  },
+  pickRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: THEME.spacing.sm,
-    paddingVertical: 4,
-  },
-  loadingText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  carouselWrapper: {
-    marginTop: THEME.spacing.sm,
-    width: Dimensions.get('window').width - 32,
-    marginLeft: Platform.OS === 'ios' ? 0 : -8,
-  },
-  cardItem: {
-    marginBottom: THEME.spacing.xs,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    padding: THEME.spacing.md,
+    gap: 12,
     borderTopWidth: 1,
-    gap: THEME.spacing.sm,
+    borderTopColor: C.divider,
+    paddingVertical: SPACING.md,
+  },
+  composerWrap: {
+    borderTopWidth: 1,
+    borderTopColor: C.divider,
+    paddingHorizontal: SPACING.screen,
+    paddingVertical: SPACING.sm,
+  },
+  composerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: SPACING.sm,
   },
   input: {
     flex: 1,
-    borderWidth: 1,
-    borderRadius: THEME.roundness.full,
-    paddingHorizontal: THEME.spacing.lg,
-    height: 40,
-    fontSize: THEME.typography.sizes.sm,
+    minWidth: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: C.hairlineStrong,
+    fontFamily: THEME.fonts.body,
+    fontSize: 14.5,
+    color: C.text,
+    paddingVertical: 9,
   },
   sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  promptsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: SPACING.sm,
   },
 });
