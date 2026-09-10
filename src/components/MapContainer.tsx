@@ -10,16 +10,15 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
 import { Cafe, CafeHours, CrowdLevel } from '../types';
-import { THEME } from '../constants/theme';
+import { THEME, crowdLabel } from '../constants/theme';
 import { calculateDistance, formatDistance } from '../utils/distance';
 import { openCafeDirections } from '../utils/directions';
 import { RouteResult } from '../services/routing';
 import { getOpenStatus } from '../utils/hours';
-import { formatCrowdUpdatedAt } from '../utils/time';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { CrowdMeter } from './classical';
+import { TriangleAlert, Map as MapIcon, CloudOff, Heart } from 'lucide-react-native';
 
 // Conditional import to prevent crash on web
 let MapView: any;
@@ -64,8 +63,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
   onToggleFavorite,
   onSelectCafe,
 }) => {
-  const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
-  const themeColors = THEME.colors[colorScheme];
+  const themeColors = THEME.colors;
 
   const mapRef = useRef<any>(null);
   const listRef = useRef<FlatList>(null);
@@ -170,9 +168,9 @@ export const MapContainer: React.FC<MapContainerProps> = ({
 
     const map = new maptilersdk.Map({
       container: mapContainerRef.current,
-      style: customStyle 
+      style: customStyle
         ? `https://api.maptiler.com/maps/${customStyle}/style.json?key=${apiKey}`
-        : (colorScheme === 'dark' ? maptilersdk.MapStyle.DARK : maptilersdk.MapStyle.STREETS),
+        : maptilersdk.MapStyle.STREETS,
       center: [centerLon, centerLat],
       zoom: 13,
       navigationControl: true,
@@ -191,35 +189,35 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     const markers: any[] = [];
     webMarkersRef.current = [];
     cafes.forEach((cafe, index) => {
-      const color = getCrowdMarkerColor(cafe.current_crowd_level);
-      
       const popupHtml = `
-        <div style="font-family: system-ui, sans-serif; padding: 4px; color: ${colorScheme === 'dark' ? '#fff' : '#000'}; background: ${colorScheme === 'dark' ? '#1E120E' : '#fff'};">
-          <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold;">${cafe.name}</h4>
-          <p style="margin: 0 0 8px 0; font-size: 11px; color: #8C7C73;">${cafe.address}</p>
+        <div style="font-family: 'Lora_400Regular', Georgia, serif; padding: 4px; color: ${themeColors.text}; background: ${themeColors.bg};">
+          <h4 style="margin: 0 0 4px 0; font-family: 'CormorantGaramond_600SemiBold', serif; font-size: 17px; font-weight: normal;">${cafe.name}</h4>
+          <p style="margin: 0 0 8px 0; font-size: 11px; color: ${themeColors.textMuted};">${cafe.address}</p>
           <div style="display: flex; gap: 6px;">
             <button id="details-btn-${cafe.id}" style="
               flex: 1;
-              background-color: ${themeColors.surfaceMuted};
+              background-color: transparent;
               color: ${themeColors.text};
-              border: 1px solid ${themeColors.border};
-              padding: 6px 8px;
-              border-radius: 6px;
-              font-size: 11px;
-              font-weight: bold;
+              border: 1px solid ${themeColors.hairlineStrong};
+              padding: 8px 8px;
+              border-radius: 4px;
+              font-size: 10px;
+              letter-spacing: 0.06em;
+              text-transform: uppercase;
               cursor: pointer;
-            ">View Details</button>
+            ">Details</button>
             <button id="directions-btn-${cafe.id}" style="
               flex: 1;
-              background-color: ${themeColors.primary};
-              color: #fff;
-              border: none;
-              padding: 6px 8px;
-              border-radius: 6px;
-              font-size: 11px;
-              font-weight: bold;
+              background-color: transparent;
+              color: ${themeColors.accent700};
+              border: 1px solid ${themeColors.accent};
+              padding: 8px 8px;
+              border-radius: 4px;
+              font-size: 10px;
+              letter-spacing: 0.06em;
+              text-transform: uppercase;
               cursor: pointer;
-            ">Get Directions</button>
+            ">Directions</button>
           </div>
         </div>
       `;
@@ -249,26 +247,42 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         console.error('Failed to resolve coffee marker image', e);
       }
 
-      // Create a custom element for the marker on Web (only containing the coffee cup image)
+      const isActive = index === activeCafeIndex;
+      const distanceLabel = formatDistance(calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude)).toUpperCase();
+
+      // Pin as a small card — icon + distance, hairline border, accent only when selected.
       const el = document.createElement('div');
       el.className = 'custom-web-marker';
       el.style.display = 'flex';
       el.style.alignItems = 'center';
-      el.style.justifyContent = 'center';
+      el.style.gap = '7px';
+      el.style.minHeight = '44px';
+      el.style.padding = '10px 12px';
+      el.style.borderRadius = '4px';
+      el.style.backgroundColor = themeColors.bg;
+      el.style.border = `1px solid ${isActive ? themeColors.accent : themeColors.hairlineStrong}`;
+      el.style.boxShadow = '0 1px 2px rgba(45,43,43,0.14)';
       el.style.cursor = 'pointer';
-      
+
       const img = document.createElement('img');
       img.src = markerImgUrl || '/assets/images/coffee_marker.png';
-      img.style.width = '28px';
-      img.style.height = '28px';
+      img.style.width = '20px';
+      img.style.height = '20px';
       img.style.objectFit = 'contain';
-      
-      const isActive = index === activeCafeIndex;
+      el.appendChild(img);
+
+      const distEl = document.createElement('span');
+      distEl.dataset.role = 'distance-label';
+      distEl.textContent = distanceLabel;
+      distEl.style.fontFamily = "'Lora_400Regular', Georgia, serif";
+      distEl.style.fontSize = '11px';
+      distEl.style.letterSpacing = '0.06em';
+      distEl.style.color = isActive ? themeColors.accent700 : themeColors.text;
+      el.appendChild(distEl);
+
       if (isActive) {
         el.style.zIndex = '999';
       }
-      
-      el.appendChild(img);
 
       const marker = new maptilersdk.Marker({ element: el })
         .setLngLat([cafe.longitude, cafe.latitude])
@@ -305,7 +319,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       }
       webMarkersRef.current = [];
     };
-  }, [sdkLoaded, cafes, userLat, userLon, colorScheme]);
+  }, [sdkLoaded, cafes, userLat, userLon]);
 
   // Synchronize map focus when selecting a cafe card
   const onCardScroll = (event: any) => {
@@ -445,7 +459,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           'line-cap': 'round',
         },
         paint: {
-          'line-color': themeColors.primary,
+          'line-color': themeColors.accent700,
           'line-width': 5,
           'line-opacity': 0.9,
         },
@@ -456,7 +470,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       lineCoords.forEach((pt: any) => bounds.extend(pt as [number, number]));
       map.fitBounds(bounds, { padding: 80, maxZoom: 16 });
     }
-  }, [activeRoute, sdkLoaded, themeColors.primary]);
+  }, [activeRoute, sdkLoaded, themeColors.accent700]);
 
   // Handle Active Route Camera Bounds on Native Map
   useEffect(() => {
@@ -527,45 +541,40 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     
     webMarkersRef.current.forEach((marker, index) => {
       const el = marker.getElement();
-      if (el) {
-        if (index === activeCafeIndex) {
-          el.style.zIndex = '999';
-        } else {
-          el.style.zIndex = 'auto';
-        }
+      if (!el) return;
+      const isActive = index === activeCafeIndex;
+      el.style.zIndex = isActive ? '999' : 'auto';
+      el.style.border = `1px solid ${isActive ? themeColors.accent : themeColors.hairlineStrong}`;
+      const distEl = el.querySelector('[data-role="distance-label"]') as HTMLElement | null;
+      if (distEl) {
+        distEl.style.color = isActive ? themeColors.accent700 : themeColors.text;
       }
     });
-  }, [activeCafeIndex, cafes]);
+  }, [activeCafeIndex, cafes, themeColors]);
 
-  const getCrowdMarkerColor = (crowd?: CrowdLevel | null) => {
-    const crowdStr = crowd !== null && crowd !== undefined ? String(crowd) : '';
-    const parsed = parseInt(crowdStr, 10);
-    if (!isNaN(parsed)) {
-      if (parsed <= 3) return '#10B981'; // Green
-      if (parsed <= 6) return '#F59E0B'; // Orange
-      if (parsed <= 8) return '#EF4444'; // Red
-      return '#7F1D1D'; // Maroon
-    }
-    if (crowdStr === 'Low') return '#10B981'; // Green
-    if (crowdStr === 'Moderate') return '#F59E0B'; // Orange
-    if (crowdStr === 'Busy') return '#EF4444'; // Red
-    if (crowdStr === 'Full') return '#7F1D1D'; // Maroon
-    return '#6E5D53'; // Default Gray
+  // Crowd is drawn as a meter + word, never a color — see design handoff README.
+  const crowdLevelNumber = (crowd?: CrowdLevel | null): number => {
+    const parsed = typeof crowd === 'number' ? crowd : parseInt(String(crowd ?? ''), 10);
+    if (!isNaN(parsed)) return Math.min(10, Math.max(1, parsed));
+    if (crowd === 'Moderate') return 5;
+    if (crowd === 'Busy') return 8;
+    if (crowd === 'Full') return 10;
+    return 2; // 'Low' or unknown
   };
 
   // Fallback UI and interactive UI for Web
   if (Platform.OS === 'web') {
     if (!isKeyConfigured) {
       return (
-        <View style={[styles.webContainer, { backgroundColor: themeColors.background }]}>
-          <View style={[styles.warningBanner, { backgroundColor: themeColors.warningLight, borderColor: themeColors.warning }]}>
-            <Ionicons name="warning" size={20} color={themeColors.warning} />
-            <Text style={[styles.warningText, { color: themeColors.warning }]}>
-              Interactive Map key missing. Add <Text style={{ fontWeight: 'bold' }}>EXPO_PUBLIC_MAPTILER_API_KEY</Text> to your <Text style={{ fontWeight: 'bold' }}>.env</Text> file to enable the interactive map.
+        <View style={[styles.webContainer, { backgroundColor: themeColors.bg }]}>
+          <View style={[styles.warningBanner, { backgroundColor: themeColors.accent100, borderColor: themeColors.accent }]}>
+            <TriangleAlert size={20} color={themeColors.accent700} strokeWidth={1.7} />
+            <Text style={[styles.warningText, { color: themeColors.accent700 }]}>
+              Interactive Map key missing. Add <Text style={{ fontStyle: 'italic' }}>EXPO_PUBLIC_MAPTILER_API_KEY</Text> to your <Text style={{ fontStyle: 'italic' }}>.env</Text> file to enable the interactive map.
             </Text>
           </View>
           <View style={styles.webHeader}>
-            <Ionicons name="map-outline" size={28} color={themeColors.primary} />
+            <MapIcon size={28} color={themeColors.accent700} strokeWidth={1.6} />
             <Text style={[styles.webTitle, { color: themeColors.text }]}>Explore Map View (Static List)</Text>
           </View>
           <Text style={[styles.webDescription, { color: themeColors.textMuted }]}>
@@ -576,7 +585,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
             {cafes.map((item, index) => {
               const distance = calculateDistance(userLat, userLon, item.latitude, item.longitude);
               const openStatus = getOpenStatus(hours[item.id] || []);
-              const color = getCrowdMarkerColor(item.current_crowd_level);
+              const crowdLevel = crowdLevelNumber(item.current_crowd_level);
 
               return (
                 <Pressable
@@ -586,14 +595,14 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                     styles.webCard,
                     {
                       backgroundColor: themeColors.surface,
-                      borderColor: index === activeCafeIndex ? themeColors.primary : themeColors.border,
+                      borderColor: index === activeCafeIndex ? themeColors.accent700 : themeColors.hairlineStrong,
                     },
                   ]}
                 >
                   <View style={styles.webCardHeader}>
                     <Text style={[styles.webCardTitle, { color: themeColors.text }]} numberOfLines={1}>{item.name}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={[styles.webDistance, { color: themeColors.primaryLight }]}>
+                      <Text style={[styles.webDistance, { color: themeColors.accent700 }]}>
                         {formatDistance(distance)}
                       </Text>
                       {onToggleFavorite && (
@@ -608,10 +617,11 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                           }}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Ionicons
-                            name={favoriteIds.includes(item.id) ? 'heart' : 'heart-outline'}
+                          <Heart
                             size={18}
-                            color={favoriteIds.includes(item.id) ? '#EF4444' : themeColors.textMuted}
+                            strokeWidth={1.7}
+                            color={favoriteIds.includes(item.id) ? themeColors.accent700 : themeColors.textLight}
+                            fill={favoriteIds.includes(item.id) ? themeColors.accent700 : 'none'}
                           />
                         </Pressable>
                       )}
@@ -621,9 +631,9 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                     {item.address}
                   </Text>
                   <View style={styles.webRow}>
-                    <View style={[styles.bullet, { backgroundColor: color }]} />
+                    <CrowdMeter level={crowdLevel} size={6} />
                     <Text style={[styles.webSubText, { color: themeColors.textMuted }]}>
-                      {item.current_crowd_level || 'Low'} Crowd • {openStatus.isOpen ? 'Open' : 'Closed'}
+                      {crowdLevel}/10 · {crowdLabel(crowdLevel)} · {openStatus.isOpen ? 'Open' : 'Closed'}
                     </Text>
                   </View>
                 </Pressable>
@@ -636,8 +646,8 @@ export const MapContainer: React.FC<MapContainerProps> = ({
 
     if (loadError) {
       return (
-        <View style={[styles.webContainer, { backgroundColor: themeColors.background, justifyContent: 'center', alignItems: 'center' }]}>
-          <Ionicons name="cloud-offline-outline" size={48} color={themeColors.danger} style={{ marginBottom: 12 }} />
+        <View style={[styles.webContainer, { backgroundColor: themeColors.bg, justifyContent: 'center', alignItems: 'center' }]}>
+          <CloudOff size={48} color={themeColors.danger} strokeWidth={1.6} style={{ marginBottom: 12 }} />
           <Text style={[styles.webTitle, { color: themeColors.text, marginBottom: 8 }]}>Failed to load map library</Text>
           <Text style={[styles.webDescription, { color: themeColors.textMuted, textAlign: 'center' }]}>
             Please check your network connection and reload.
@@ -648,8 +658,8 @@ export const MapContainer: React.FC<MapContainerProps> = ({
 
     if (!sdkLoaded) {
       return (
-        <View style={[styles.webContainer, { backgroundColor: themeColors.background, justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator size="large" color={themeColors.primary} style={{ marginBottom: 12 }} />
+        <View style={[styles.webContainer, { backgroundColor: themeColors.bg, justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color={themeColors.accent700} style={{ marginBottom: 12 }} />
           <Text style={[styles.webDescription, { color: themeColors.textMuted }]}>
             Loading interactive map...
           </Text>
@@ -685,7 +695,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
             renderItem={({ item, index }) => {
               const distance = calculateDistance(userLat, userLon, item.latitude, item.longitude);
               const openStatus = getOpenStatus(hours[item.id] || []);
-              const crowdColor = getCrowdMarkerColor(item.current_crowd_level);
+              const crowdLevel = crowdLevelNumber(item.current_crowd_level);
 
               return (
                 <Pressable
@@ -694,7 +704,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                     styles.card,
                     {
                       backgroundColor: themeColors.surface,
-                      borderColor: index === activeCafeIndex ? themeColors.primary : themeColors.border,
+                      borderColor: index === activeCafeIndex ? themeColors.accent700 : themeColors.hairlineStrong,
                     },
                     pressed && { opacity: 0.95 },
                   ]}
@@ -704,7 +714,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                       {item.name}
                     </Text>
                     <View style={styles.cardHeaderRight}>
-                      <Text style={[styles.cardDistance, { color: themeColors.primaryLight }]}>
+                      <Text style={[styles.cardDistance, { color: themeColors.accent700 }]}>
                         {formatDistance(distance)}
                       </Text>
                       {onToggleFavorite && (
@@ -719,10 +729,11 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                           }}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Ionicons
-                            name={favoriteIds.includes(item.id) ? 'heart' : 'heart-outline'}
+                          <Heart
                             size={18}
-                            color={favoriteIds.includes(item.id) ? '#EF4444' : themeColors.textMuted}
+                            strokeWidth={1.7}
+                            color={favoriteIds.includes(item.id) ? themeColors.accent700 : themeColors.textLight}
+                            fill={favoriteIds.includes(item.id) ? themeColors.accent700 : 'none'}
                           />
                         </Pressable>
                       )}
@@ -732,15 +743,16 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                     {item.address}
                   </Text>
                   <View style={styles.cardFooter}>
-                    <View style={[styles.badge, { backgroundColor: crowdColor + '1F' }]}>
-                      <Text style={[styles.badgeText, { color: crowdColor }]}>
-                        {item.current_crowd_level ? `${item.current_crowd_level}/10` : 'Low'} Crowd{formatCrowdUpdatedAt(item.crowd_updated_at, { compact: true }) ? ` · ${formatCrowdUpdatedAt(item.crowd_updated_at, { compact: true })}` : ''}
+                    <View style={styles.crowdRow}>
+                      <CrowdMeter level={crowdLevel} size={6} />
+                      <Text style={styles.badgeText}>
+                        {crowdLevel}/10 · {crowdLabel(crowdLevel)}
                       </Text>
                     </View>
                     <Text
                       style={[
                         styles.openStatus,
-                        { color: openStatus.isOpen ? themeColors.success : themeColors.danger },
+                        { color: openStatus.isOpen ? themeColors.accent700 : themeColors.textMuted },
                       ]}
                     >
                       {openStatus.isOpen ? 'Open Now' : 'Closed'}
@@ -765,44 +777,22 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         initialRegion={initialRegion}
         showsUserLocation={true}
         showsMyLocationButton={true}
-        customMapStyle={
-          colorScheme === 'dark'
-            ? [
-                {
-                  elementType: 'geometry',
-                  stylers: [{ color: '#242f3e' }],
-                },
-                {
-                  elementType: 'labels.text.fill',
-                  stylers: [{ color: '#746855' }],
-                },
-                {
-                  elementType: 'labels.text.stroke',
-                  stylers: [{ color: '#242f3e' }],
-                },
-                {
-                  featureType: 'administrative.locality',
-                  elementType: 'labels.text.fill',
-                  stylers: [{ color: '#d59563' }],
-                },
-                {
-                  featureType: 'road',
-                  elementType: 'geometry',
-                  stylers: [{ color: '#38414e' }],
-                },
-                {
-                  featureType: 'road',
-                  elementType: 'labels.text.fill',
-                  stylers: [{ color: '#9ca5b3' }],
-                },
-                {
-                  featureType: 'water',
-                  elementType: 'geometry',
-                  stylers: [{ color: '#17263c' }],
-                },
-              ]
-            : []
-        }
+        // A muted, low-saturation ground so the map reads near-white behind the
+        // warm-paper card chrome, per the design handoff.
+        customMapStyle={[
+          { elementType: 'geometry', stylers: [{ color: '#f3f2f2' }] },
+          { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#9b9797' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#f3f2f2' }] },
+          { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
+          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#eae9e9' }] },
+          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#e0dede' }] },
+          { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9b9797' }] },
+          { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#e3e0da' }] },
+          { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#e6e4e4' }] },
+        ]}
       >
         {/* User Marker if Fallback (mock GPS pin) */}
         <Marker
@@ -815,7 +805,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         {activeRoute && activeRoute.coordinates && activeRoute.coordinates.length > 0 && Polyline && (
           <Polyline
             coordinates={activeRoute.coordinates}
-            strokeColor={themeColors.primary}
+            strokeColor={themeColors.accent700}
             strokeWidth={5}
           />
         )}
@@ -829,9 +819,13 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           />
         )}
 
-        {/* Cafe Markers */}
+        {/* Cafe Markers — a small hairline card (icon + distance), not a bare pin.
+            tracksViewChanges stays false for perf, so this card doesn't re-skin
+            on selection; the carousel card below is the reactive indicator. */}
         {cafes.map((item, index) => {
-          const isActive = index === activeCafeIndex;
+          const distanceLabel = formatDistance(
+            calculateDistance(userLat, userLon, item.latitude, item.longitude)
+          ).toUpperCase();
 
           return (
             <Marker
@@ -840,20 +834,14 @@ export const MapContainer: React.FC<MapContainerProps> = ({
               onPress={() => selectMarker(index)}
               tracksViewChanges={false}
               anchor={{ x: 0.5, y: 0.5 }}
-              zIndex={isActive ? 999 : 1}
+              zIndex={index === activeCafeIndex ? 999 : 1}
             >
-              <View style={{
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
+              <View style={styles.pinCard}>
                 <Image
                   source={require('../../assets/images/coffee_marker.png')}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    resizeMode: 'contain',
-                  }}
+                  style={{ width: 20, height: 20, resizeMode: 'contain' }}
                 />
+                <Text style={styles.pinCardText}>{distanceLabel}</Text>
               </View>
             </Marker>
           );
@@ -880,7 +868,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           renderItem={({ item, index }) => {
             const distance = calculateDistance(userLat, userLon, item.latitude, item.longitude);
             const openStatus = getOpenStatus(hours[item.id] || []);
-            const crowdColor = getCrowdMarkerColor(item.current_crowd_level);
+            const crowdLevel = crowdLevelNumber(item.current_crowd_level);
 
             return (
               <Pressable
@@ -889,7 +877,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                   styles.card,
                   {
                     backgroundColor: themeColors.surface,
-                    borderColor: index === activeCafeIndex ? themeColors.primary : themeColors.border,
+                    borderColor: index === activeCafeIndex ? themeColors.accent700 : themeColors.hairlineStrong,
                   },
                   pressed && { opacity: 0.95 },
                 ]}
@@ -899,7 +887,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                     {item.name}
                   </Text>
                   <View style={styles.cardHeaderRight}>
-                    <Text style={[styles.cardDistance, { color: themeColors.primaryLight }]}>
+                    <Text style={[styles.cardDistance, { color: themeColors.accent700 }]}>
                       {formatDistance(distance)}
                     </Text>
                     {onToggleFavorite && (
@@ -918,10 +906,11 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                         ]}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Ionicons
-                          name={favoriteIds.includes(item.id) ? 'heart' : 'heart-outline'}
+                        <Heart
                           size={18}
-                          color={favoriteIds.includes(item.id) ? '#EF4444' : themeColors.textMuted}
+                          strokeWidth={1.7}
+                          color={favoriteIds.includes(item.id) ? themeColors.accent700 : themeColors.textLight}
+                          fill={favoriteIds.includes(item.id) ? themeColors.accent700 : 'none'}
                         />
                       </Pressable>
                     )}
@@ -931,15 +920,16 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                   {item.address}
                 </Text>
                 <View style={styles.cardFooter}>
-                  <View style={[styles.badge, { backgroundColor: crowdColor + '1F' }]}>
-                    <Text style={[styles.badgeText, { color: crowdColor }]}>
-                      {item.current_crowd_level ? `${item.current_crowd_level}/10` : 'Low'} Crowd{formatCrowdUpdatedAt(item.crowd_updated_at, { compact: true }) ? ` · ${formatCrowdUpdatedAt(item.crowd_updated_at, { compact: true })}` : ''}
+                  <View style={styles.crowdRow}>
+                    <CrowdMeter level={crowdLevel} size={6} />
+                    <Text style={styles.badgeText}>
+                      {crowdLevel}/10 · {crowdLabel(crowdLevel)}
                     </Text>
                   </View>
                   <Text
                     style={[
                       styles.openStatus,
-                      { color: openStatus.isOpen ? themeColors.success : themeColors.danger },
+                      { color: openStatus.isOpen ? themeColors.accent700 : themeColors.textMuted },
                     ]}
                   >
                     {openStatus.isOpen ? 'Open Now' : 'Closed'}
@@ -963,25 +953,22 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  customPin: {
-    padding: 4,
-    borderRadius: 20,
+  pinCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  activeDot: {
-    position: 'absolute',
-    bottom: -6,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    gap: 7,
+    minHeight: 44,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: THEME.radius.md,
     borderWidth: 1,
-    borderColor: '#FFF',
+    borderColor: THEME.colors.hairlineStrong,
+    backgroundColor: THEME.colors.bg,
+    ...THEME.shadow.sm,
+  },
+  pinCardText: {
+    ...THEME.type.meta,
+    color: THEME.colors.text,
   },
   carouselContainer: {
     position: 'absolute',
@@ -993,14 +980,10 @@ const styles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
     marginHorizontal: CARD_SPACING,
-    borderRadius: THEME.roundness.md,
-    borderWidth: 1.5,
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
     padding: THEME.spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    ...THEME.shadow.sm,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -1017,17 +1000,15 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   cardTitle: {
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: 'bold',
+    ...THEME.type.listTitle,
     flex: 1,
     marginRight: THEME.spacing.sm,
   },
   cardDistance: {
-    fontSize: 11,
-    fontWeight: 'bold',
+    ...THEME.type.meta,
   },
   cardAddress: {
-    fontSize: 10,
+    ...THEME.type.metaSmall,
     marginBottom: THEME.spacing.md,
   },
   cardFooter: {
@@ -1035,20 +1016,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: THEME.roundness.sm,
+  crowdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   badgeText: {
-    fontSize: 9,
-    fontWeight: 'bold',
+    ...THEME.type.metaSmall,
+    color: THEME.colors.textSecondary,
   },
   openStatus: {
-    fontSize: 10,
-    fontWeight: 'bold',
+    ...THEME.type.kicker,
   },
-  
+
   // Web Fallback styles
   webContainer: {
     flex: 1,
@@ -1061,11 +1041,10 @@ const styles = StyleSheet.create({
     marginBottom: THEME.spacing.sm,
   },
   webTitle: {
-    fontSize: THEME.typography.sizes.md,
-    fontWeight: 'bold',
+    ...THEME.type.cardTitle,
   },
   webDescription: {
-    fontSize: THEME.typography.sizes.xs,
+    ...THEME.type.meta,
     marginBottom: THEME.spacing.md,
   },
   webCafeList: {
@@ -1073,7 +1052,7 @@ const styles = StyleSheet.create({
   },
   webCard: {
     borderWidth: 1,
-    borderRadius: THEME.roundness.md,
+    borderRadius: THEME.radius.md,
     padding: THEME.spacing.md,
     marginBottom: THEME.spacing.sm,
   },
@@ -1083,15 +1062,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   webCardTitle: {
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: 'bold',
+    ...THEME.type.listTitle,
   },
   webDistance: {
-    fontSize: THEME.typography.sizes.xs,
-    fontWeight: 'bold',
+    ...THEME.type.meta,
   },
   webCardAddress: {
-    fontSize: 11,
+    ...THEME.type.metaSmall,
     marginBottom: THEME.spacing.sm,
   },
   webRow: {
@@ -1099,27 +1076,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  bullet: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
   webSubText: {
-    fontSize: 10,
-    fontWeight: '500',
+    ...THEME.type.kicker,
   },
   warningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: THEME.spacing.md,
-    borderRadius: THEME.roundness.md,
+    borderRadius: THEME.radius.md,
     marginBottom: THEME.spacing.lg,
     borderWidth: 1,
     gap: THEME.spacing.sm,
   },
   warningText: {
-    fontSize: 12,
-    lineHeight: 18,
+    ...THEME.type.bodyTight,
     flex: 1,
   },
 });
