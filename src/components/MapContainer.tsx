@@ -183,25 +183,6 @@ export const MapContainer: React.FC<MapContainerProps> = ({
 
     mapRef.current = map;
 
-    // The stock STREETS style colors road classes differently (motorways
-    // yellow, primary roads orange, etc). Recolor every road line the same
-    // muted gray. Matched by source-layer rather than a hardcoded id list —
-    // MapTiler's OpenMapTiles-based styles put all road (and rail) lines in
-    // a "transportation" source-layer regardless of class, so this catches
-    // every road type without guessing individual layer ids.
-    map.on('load', () => {
-      const style = map.getStyle?.();
-      (style?.layers || []).forEach((layer: any) => {
-        if (layer.type === 'line' && layer['source-layer'] === 'transportation') {
-          try {
-            map.setPaintProperty(layer.id, 'line-color', '#c7c2ba');
-          } catch (e) {
-            // Layer doesn't take a line-color paint property — skip it.
-          }
-        }
-      });
-    });
-
     if (userLon && userLat) {
       new maptilersdk.Marker({ color: '#3B82F6' })
         .setLngLat([userLon, userLat])
@@ -796,8 +777,6 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           { elementType: 'labels.text.stroke', stylers: [{ color: '#f3f2f2' }] },
           { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
           { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#c7c2ba' }] },
-          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#c7c2ba' }] },
           { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9b9797' }] },
           { featureType: 'transit', stylers: [{ visibility: 'off' }] },
           { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#e6e4e4' }] },
