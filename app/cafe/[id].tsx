@@ -24,13 +24,6 @@ const CROWD_NOTES: Record<string, string> = {
   Full: 'Near capacity. Seating is limited.',
 };
 
-function quietnessWord(avg?: number): string {
-  if (!avg) return 'Unrated';
-  if (avg <= 1.6) return 'Loud';
-  if (avg <= 2.3) return 'Moderate';
-  return 'Quiet';
-}
-
 export default function CafeProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -234,21 +227,12 @@ export default function CafeProfileScreen() {
 
           <Divider style={styles.sectionDivider} />
 
-          {/* Wi-Fi / Noise */}
-          <View style={styles.twoColRow}>
-            <View style={{ flex: 1 }}>
-              <Kicker>Wi-Fi</Kicker>
-              <Text style={[TYPE.sectionValue, { color: C.text, marginTop: 6 }]}>
-                {cafe.wifi_available ? cafe.wifi_quality || 'Available' : 'None'}
-              </Text>
-              <Text style={[TYPE.metaSmall, { color: C.textMuted }]}>rated by administrators</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Kicker>Noise</Kicker>
-              <Text style={[TYPE.sectionValue, { color: C.text, marginTop: 6 }]}>{quietnessWord(cafe.avg_quietness)}</Text>
-              <Text style={[TYPE.metaSmall, { color: C.textMuted }]}>{cafe.total_ratings || 0} student ratings</Text>
-            </View>
-          </View>
+          {/* Wi-Fi */}
+          <Kicker>Wi-Fi</Kicker>
+          <Text style={[TYPE.sectionValue, { color: C.text, marginTop: 6 }]}>
+            {cafe.wifi_available ? cafe.wifi_quality || 'Available' : 'None'}
+          </Text>
+          <Text style={[TYPE.metaSmall, { color: C.textMuted }]}>rated by administrators</Text>
 
           <Divider style={styles.sectionDivider} />
 
@@ -380,11 +364,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: SPACING.sm,
     marginBottom: SPACING.md,
-  },
-  twoColRow: {
-    flexDirection: 'row',
-    gap: 36.8,
-    flexWrap: 'wrap',
   },
   hoursHeaderRow: {
     flexDirection: 'row',
