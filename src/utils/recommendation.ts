@@ -74,8 +74,9 @@ export function rankCafes(
     return [];
   }
 
+  // Honor whatever count was requested, capped only by how many cafés exist.
   const requestedCount = prefs?.max_results ?? 3;
-  const resultCount = Math.min(Math.max(requestedCount, 1), 3);
+  const resultCount = Math.min(Math.max(requestedCount, 1), cafes.length);
 
   return scoredCafes
     .slice(0, resultCount)

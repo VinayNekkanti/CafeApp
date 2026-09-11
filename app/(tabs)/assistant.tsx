@@ -36,6 +36,35 @@ const STARTER_PROMPTS = [
   { label: 'Open late', text: 'Somewhere open late tonight' },
 ];
 
+const COUNT_WORDS: Record<string, number> = {
+  single: 1, one: 1,
+  couple: 2, pair: 2, two: 2,
+  three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+
+/**
+ * Pulls a requested result count out of free text — a digit ("5", "10"), a
+ * number word ("five"), or an "all/every" style request — uncapped here;
+ * the actual ceiling is how many cafés exist, enforced later by rankCafes().
+ */
+function parseRequestedCount(qTrim: string): number | undefined {
+  if (/\b(all|every|as many as (possible|you can)|everything)\b/.test(qTrim)) {
+    return 999;
+  }
+  // Ignore a number that's actually a distance/time unit ("within 2 miles", "10 min").
+  const digitMatch = qTrim.match(/\b(\d{1,3})\b(?!\s*(mi|mile|miles|min|mins|minute|minutes|hour|hours))/);
+  if (digitMatch) {
+    const n = parseInt(digitMatch[1], 10);
+    if (n > 0) return n;
+  }
+  for (const word of Object.keys(COUNT_WORDS)) {
+    if (new RegExp(`\\b${word}\\b`).test(qTrim)) {
+      return COUNT_WORDS[word];
+    }
+  }
+  return undefined;
+}
+
 /** A recommendation pick — hangs below the assistant bubble, full width. */
 function PickRow({ cafe, userLat, userLon, onPress }: { cafe: Cafe; userLat: number; userLon: number; onPress: () => void }) {
   const distanceMiles = calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude);
@@ -206,12 +235,11 @@ export default function AIAssistantScreen() {
       intent: isModify ? 'modify_recommendation' : 'recommend_cafe',
     };
 
-    if (qTrim.includes('1') || qTrim.includes('one') || qTrim.includes('single') || qTrim.includes('closest cafe')) {
-      prefs.max_results = 1;
-    } else if (qTrim.includes('2') || qTrim.includes('two') || qTrim.includes('pair')) {
-      prefs.max_results = 2;
-    } else if (qTrim.includes('3') || qTrim.includes('three')) {
-      prefs.max_results = 3;
+    const requestedCount = parseRequestedCount(qTrim);
+    if (requestedCount !== undefined) {
+      prefs.max_results = requestedCount;
+    } else if (/\b(closest|nearest) cafe\b/.test(qTrim)) {
+      prefs.max_results = 1; // singular noun implies one result
     } else if (!prefs.max_results) {
       prefs.max_results = 3;
     }
