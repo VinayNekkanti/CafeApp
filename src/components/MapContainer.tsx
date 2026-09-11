@@ -183,6 +183,22 @@ export const MapContainer: React.FC<MapContainerProps> = ({
 
     mapRef.current = map;
 
+    // The stock STREETS style renders motorway/trunk lines in yellow — recolor
+    // them gray to match the muted map treatment. Matched by layer id rather
+    // than a hardcoded list, since exact ids can vary by style/version.
+    map.on('load', () => {
+      const style = map.getStyle?.();
+      (style?.layers || []).forEach((layer: any) => {
+        if (layer.type === 'line' && /motorway|trunk|highway/i.test(layer.id)) {
+          try {
+            map.setPaintProperty(layer.id, 'line-color', '#c7c2ba');
+          } catch (e) {
+            // Layer doesn't take a line-color paint property — skip it.
+          }
+        }
+      });
+    });
+
     if (userLon && userLat) {
       new maptilersdk.Marker({ color: '#3B82F6' })
         .setLngLat([userLon, userLat])
@@ -780,7 +796,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#eae9e9' }] },
           { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#e0dede' }] },
           { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9b9797' }] },
-          { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#e3e0da' }] },
+          { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#c7c2ba' }] },
           { featureType: 'transit', stylers: [{ visibility: 'off' }] },
           { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#e6e4e4' }] },
         ]}
