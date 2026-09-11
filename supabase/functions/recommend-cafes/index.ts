@@ -71,7 +71,7 @@ Classify the user message into one of these intents:
 Return JSON strictly matching this schema:
 {
   "intent": "general_chat" | "recommend_cafe" | "modify_recommendation" | "clarification",
-  "max_results": integer (1, 2, or 3. Default 3. "give me one" -> 1, "show two" -> 2),
+  "max_results": integer or null (the exact number the user asks for — "give me one" -> 1, "show two" -> 2, "show me 5" -> 5, "as many as you can" -> 999. Default null when unspecified.),
   "wifi_required": boolean or null,
   "max_distance_miles": number or null (e.g. "within 2 miles" -> 2),
   "open_now_required": boolean or null,
@@ -130,6 +130,11 @@ Rules:
       preferences = {
         ...lastPreferences,
         ...preferences,
+        // A modify turn that doesn't mention a count (e.g. "make it closer") would
+        // otherwise overwrite a previously requested count with the schema's null
+        // default, silently resetting it — so keep the prior count unless the model
+        // actually returned a new one this turn.
+        max_results: preferences.max_results ?? lastPreferences.max_results,
         wifi_required: preferences.wifi_required ?? lastPreferences.wifi_required,
         max_distance_miles: preferences.max_distance_miles ?? lastPreferences.max_distance_miles,
         open_now_required: preferences.open_now_required ?? lastPreferences.open_now_required,
@@ -216,7 +221,8 @@ Rules:
       return b.score - a.score;
     });
 
-    const maxResults = Math.min(Math.max(preferences.max_results || 3, 1), 3);
+    // Honor whatever count the user asked for, capped only by how many cafés exist.
+    const maxResults = Math.min(Math.max(preferences.max_results || 3, 1), cafes.length);
     const topCafes = scoredCafes.slice(0, maxResults).map((c: any) => c.cafe);
 
     console.log('[AI] mode=OPENAI payload=', JSON.stringify({
