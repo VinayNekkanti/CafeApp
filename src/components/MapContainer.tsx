@@ -309,42 +309,56 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     };
   }, [sdkLoaded, cafes, userLat, userLon]);
 
-  // Fires once the carousel finishes settling on a card (swipe momentum ending,
-  // or a scrollToOffset from selectMarker below) — not on every scroll frame,
-  // so an in-flight programmatic scroll doesn't get read as a sweep through
-  // every index it passes on the way to its target.
-  const onCardSettle = (event: any) => {
-    const index = Math.round(event.nativeEvent.contentOffset.x / SLIDE_SIZE);
-
-    if (index >= 0 && index < cafes.length && index !== activeCafeIndex) {
-      setActiveCafeIndex(index);
-      const activeCafe = cafes[index];
-      if (activeCafe) {
-        if (Platform.OS !== 'web' && mapRef.current) {
-          mapRef.current.animateToRegion(
-            {
-              latitude: activeCafe.latitude,
-              longitude: activeCafe.longitude,
-              latitudeDelta: 0.015,
-              longitudeDelta: 0.015,
-            },
-            350
-          );
-        } else if (Platform.OS === 'web' && mapRef.current) {
-          mapRef.current.flyTo({
-            center: [activeCafe.longitude, activeCafe.latitude],
-            zoom: 14.5,
-            essential: true,
-          });
-        }
-      }
+  // Pans the map to whichever café sits at `index`, once the carousel has
+  // actually settled there.
+  const settleOnIndex = (index: number) => {
+    if (index < 0 || index >= cafes.length || index === activeCafeIndex) return;
+    setActiveCafeIndex(index);
+    const activeCafe = cafes[index];
+    if (!activeCafe) return;
+    if (Platform.OS !== 'web' && mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: activeCafe.latitude,
+          longitude: activeCafe.longitude,
+          latitudeDelta: 0.015,
+          longitudeDelta: 0.015,
+        },
+        350
+      );
+    } else if (Platform.OS === 'web' && mapRef.current) {
+      mapRef.current.flyTo({
+        center: [activeCafe.longitude, activeCafe.latitude],
+        zoom: 14.5,
+        essential: true,
+      });
     }
   };
+
+  // react-native-web's ScrollView never actually fires onMomentumScrollEnd —
+  // it's declared in its prop types but never invoked, so that's a dead
+  // listener on web. Debouncing onScroll ourselves (reading the position 120ms
+  // after scroll events stop) gives the same "wait for it to actually settle"
+  // behavior on every platform, web included.
+  const scrollSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onCardScroll = (event: any) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    if (scrollSettleTimer.current) clearTimeout(scrollSettleTimer.current);
+    scrollSettleTimer.current = setTimeout(() => {
+      settleOnIndex(Math.round(offsetX / SLIDE_SIZE));
+    }, 120);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (scrollSettleTimer.current) clearTimeout(scrollSettleTimer.current);
+    };
+  }, []);
 
   const selectMarker = (index: number) => {
     setActiveCafeIndex(index);
     if (listRef.current) {
-      // scrollToOffset with the same SLIDE_SIZE math onCardSettle reads back —
+      // scrollToOffset with the same SLIDE_SIZE math settleOnIndex reads back —
       // scrollToIndex's viewPosition centering used a different offset formula
       // than the swipe-snap layout, so the settle handler would read back the
       // wrong index after a pin tap and re-pan the map to the wrong café.
@@ -664,7 +678,8 @@ export const MapContainer: React.FC<MapContainerProps> = ({
             showsHorizontalScrollIndicator={false}
             data={cafes}
             keyExtractor={(item) => item.id}
-            onMomentumScrollEnd={onCardSettle}
+            onScroll={onCardScroll}
+            scrollEventThrottle={16}
             contentContainerStyle={{
               paddingHorizontal: (width - CARD_WIDTH) / 2 - CARD_SPACING,
             }}
@@ -827,7 +842,8 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           showsHorizontalScrollIndicator={false}
           data={cafes}
           keyExtractor={(item) => item.id}
-          onMomentumScrollEnd={onCardSettle}
+          onScroll={onCardScroll}
+          scrollEventThrottle={16}
           contentContainerStyle={{
             paddingHorizontal: Platform.OS === 'android' ? CARD_SPACING : (width - CARD_WIDTH) / 2 - CARD_SPACING,
           }}
