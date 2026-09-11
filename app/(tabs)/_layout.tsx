@@ -1,117 +1,85 @@
 import React from 'react';
-import { Tabs, useRouter } from 'expo-router';
-import { Image, Platform, Pressable, Text, View, useColorScheme } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Tabs } from 'expo-router';
+import { Pressable, Text, GestureResponderEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MapPin, MessageSquare, User } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import { THEME } from '../../src/constants/theme';
 
-export default function TabLayout() {
-  const router = useRouter();
-  const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
-  const themeColors = THEME.colors[colorScheme];
+const { colors: C, type: TYPE } = THEME;
 
-  const renderHeaderTitle = () => (
-    <Pressable
-      onPress={() => router.push('/')}
-      style={({ pressed }) => [{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        marginLeft: Platform.OS === 'web' ? 4 : 0,
-        opacity: pressed ? 0.8 : 1.0,
-        cursor: 'pointer',
-      }]}
-    >
-      <View style={{
-        width: 52,
-        height: 52,
-        borderRadius: 14,
-        overflow: 'hidden',
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}>
-        <Image
-          source={require('../../assets/images/logo.png')}
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 14,
-          }}
-          resizeMode="cover"
-        />
-      </View>
-      <Text style={{ fontWeight: '800', color: themeColors.text, fontSize: THEME.typography.sizes.lg + 3, letterSpacing: -0.4 }}>
-        FindMyCafe
-      </Text>
-    </Pressable>
-  );
+/**
+ * A tab's whole active affordance is a 2px accent rule on its own top edge —
+ * no pill, no background fill. See design handoff README, "Tab bar".
+ */
+function makeTabButton(Icon: LucideIcon, label: string) {
+  return function TabButton({
+    onPress,
+    accessibilityState,
+  }: {
+    onPress?: (e: GestureResponderEvent) => void;
+    accessibilityState?: { selected?: boolean };
+  }) {
+    const focused = !!accessibilityState?.selected;
+    const tint = focused ? C.accent700 : C.textLight;
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityState={{ selected: focused }}
+        style={{
+          flex: 1,
+          minHeight: 52,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 4,
+          borderTopWidth: 2,
+          borderTopColor: focused ? C.accent : 'transparent',
+        }}
+      >
+        <Icon size={19} color={tint} strokeWidth={1.6} />
+        <Text style={[TYPE.tab, { color: tint }]}>{label}</Text>
+      </Pressable>
+    );
+  };
+}
+
+export default function TabLayout() {
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: themeColors.tabIconSelected,
-        tabBarInactiveTintColor: themeColors.tabIconDefault,
+        headerShown: false,
         tabBarStyle: {
-          backgroundColor: themeColors.surface,
-          borderTopColor: themeColors.border,
+          backgroundColor: C.bg,
           borderTopWidth: 1,
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
+          borderTopColor: C.divider,
+          paddingTop: 8,
+          paddingBottom: Math.max(insets.bottom, 8),
+          height: 52 + 8 + Math.max(insets.bottom, 8),
         },
-        headerStyle: {
-          backgroundColor: themeColors.surface,
-          borderBottomColor: themeColors.border,
-          borderBottomWidth: 1,
-          height: 80,
-        },
-        headerTitleStyle: {
-          fontWeight: 'bold',
-          color: themeColors.text,
-          fontSize: THEME.typography.sizes.lg,
-        },
-        headerTitleAlign: 'left',
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Explore',
-          headerTitle: renderHeaderTitle,
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? 'compass' : 'compass-outline'}
-              size={24}
-              color={color}
-            />
-          ),
+          tabBarButton: makeTabButton(MapPin, 'Explore'),
         }}
       />
       <Tabs.Screen
         name="assistant"
         options={{
-          title: 'AI Assistant',
-          headerTitle: renderHeaderTitle,
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? 'sparkles' : 'sparkles-outline'}
-              size={24}
-              color={color}
-            />
-          ),
+          title: 'Assistant',
+          tabBarButton: makeTabButton(MessageSquare, 'Assistant'),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          headerTitle: renderHeaderTitle,
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? 'person' : 'person-outline'}
-              size={24}
-              color={color}
-            />
-          ),
+          tabBarButton: makeTabButton(User, 'Profile'),
         }}
       />
     </Tabs>

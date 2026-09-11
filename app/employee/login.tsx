@@ -10,7 +10,6 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../src/services/supabase';
@@ -18,10 +17,11 @@ import { getEmployeeAssignment } from '../../src/services/data';
 import { THEME } from '../../src/constants/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
+// NOTE: not yet migrated to the Classical design (see design handoff README) —
+// this is a minimal compile fix onto the new flat theme shape, not a redesign.
 export default function EmployeeLoginScreen() {
   const router = useRouter();
-  const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
-  const themeColors = THEME.colors[colorScheme];
+  const themeColors = THEME.colors;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -88,7 +88,7 @@ export default function EmployeeLoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: themeColors.background }]}
+      style={[styles.container, { backgroundColor: themeColors.bg }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
@@ -102,8 +102,8 @@ export default function EmployeeLoginScreen() {
 
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <View style={[styles.badgeIcon, { backgroundColor: themeColors.primaryLight }]}>
-            <Ionicons name="briefcase" size={32} color={themeColors.primary} />
+          <View style={[styles.badgeIcon, { backgroundColor: themeColors.accent100 }]}>
+            <Ionicons name="briefcase" size={32} color={themeColors.accent700} />
           </View>
           <Text style={[styles.title, { color: themeColors.text }]}>Employee Portal</Text>
           <Text style={[styles.subtitle, { color: themeColors.textMuted }]}>
@@ -112,9 +112,9 @@ export default function EmployeeLoginScreen() {
         </View>
 
         {/* Form Fields */}
-        <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+        <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.divider }]}>
           {errorMessage && (
-            <View style={[styles.errorContainer, { backgroundColor: themeColors.dangerLight }]}>
+            <View style={[styles.errorContainer, { backgroundColor: themeColors.danger + '1A' }]}>
               <Ionicons name="alert-circle" size={20} color={themeColors.danger} />
               <Text style={[styles.errorText, { color: themeColors.danger }]}>{errorMessage}</Text>
             </View>
@@ -122,7 +122,7 @@ export default function EmployeeLoginScreen() {
 
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: themeColors.text }]}>Employee Email</Text>
-            <View style={[styles.inputWrapper, { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border }]}>
+            <View style={[styles.inputWrapper, { backgroundColor: themeColors.surfaceAlt, borderColor: themeColors.divider }]}>
               <Ionicons name="mail-outline" size={20} color={themeColors.textMuted} style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, { color: themeColors.text }]}
@@ -139,7 +139,7 @@ export default function EmployeeLoginScreen() {
 
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: themeColors.text }]}>Password</Text>
-            <View style={[styles.inputWrapper, { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border }]}>
+            <View style={[styles.inputWrapper, { backgroundColor: themeColors.surfaceAlt, borderColor: themeColors.divider }]}>
               <Ionicons name="lock-closed-outline" size={20} color={themeColors.textMuted} style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, { color: themeColors.text }]}
@@ -159,7 +159,7 @@ export default function EmployeeLoginScreen() {
             disabled={loading}
             style={[
               styles.submitBtn,
-              { backgroundColor: themeColors.primary },
+              { backgroundColor: themeColors.accent700 },
               loading && { opacity: 0.7 },
             ]}
           >

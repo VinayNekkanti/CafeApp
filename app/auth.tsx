@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,21 +11,21 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Mail, Lock, User as UserIcon, Briefcase } from 'lucide-react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '../src/context/AuthContext';
 import { supabase } from '../src/services/supabase';
 import { THEME } from '../src/constants/theme';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Divider, Kicker, OutlineButton, Plate } from '../src/components/classical';
+
+const { colors: C, spacing: SPACING, type: TYPE } = THEME;
 
 export default function AuthScreen() {
   const router = useRouter();
-  const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
-  const themeColors = THEME.colors[colorScheme];
   const { signInWithGoogle } = useAuth();
 
-  // State
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -76,8 +77,7 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       if (isLogin) {
-        // Sign In using Supabase signInWithPassword
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password: password,
         });
@@ -105,7 +105,6 @@ export default function AuthScreen() {
           return;
         }
       } else {
-        // Sign Up using Supabase signUp
         const { data, error } = await supabase.auth.signUp({
           email: cleanEmail,
           password: password,
@@ -128,7 +127,7 @@ export default function AuthScreen() {
           return;
         }
 
-        if (data?.user && (!data?.session)) {
+        if (data?.user && !data?.session) {
           setSuccessMessage('Account created! Please check your email inbox to confirm your account.');
           Alert.alert(
             'Confirmation Required',
@@ -151,174 +150,138 @@ export default function AuthScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={[styles.container, { backgroundColor: themeColors.background }]}
+      style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
-          {/* Logo Vibe */}
-          <View style={styles.logoContainer}>
-            <View style={[styles.logoCircle, { backgroundColor: themeColors.surfaceMuted }]}>
-              <Ionicons name="cafe" size={36} color={themeColors.primary} />
+        <View style={styles.logoWrap}>
+          <Plate size={64}>
+            <Image source={require('../assets/images/logo.png')} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          </Plate>
+          <Text style={[TYPE.screenTitle, { color: C.text, marginTop: SPACING.md }]}>
+            {isLogin ? 'Welcome back' : 'Create account'}
+          </Text>
+          <Text style={[TYPE.bodyTight, styles.subtitle]}>
+            {isLogin ? 'Sign in to rate café study vibes' : 'Join fellow UCI students on FindMyCafe'}
+          </Text>
+        </View>
+
+        {errorMessage && <Text style={[TYPE.metaSmall, styles.messageText, { color: C.danger }]}>{errorMessage}</Text>}
+        {successMessage && <Text style={[TYPE.metaSmall, styles.messageText, { color: C.accent700 }]}>{successMessage}</Text>}
+
+        {/* Google auth needs a leading brand icon, which OutlineButton's plain
+            label API doesn't support — styled to match it exactly instead. */}
+        <Pressable
+          onPress={handleGoogleAuth}
+          disabled={googleLoading || loading}
+          style={({ pressed }) => [
+            styles.googleBtn,
+            (googleLoading || loading) && { opacity: 0.5 },
+            pressed && !(googleLoading || loading) && { backgroundColor: C.surface },
+          ]}
+        >
+          {googleLoading ? (
+            <ActivityIndicator size="small" color={C.accent700} />
+          ) : (
+            <>
+              <Ionicons name="logo-google" size={17} color="#EA4335" />
+              <Text style={[TYPE.kicker, { fontSize: 13, color: C.text }]}>Continue with Google</Text>
+            </>
+          )}
+        </Pressable>
+
+        <View style={styles.dividerRow}>
+          <Divider style={{ flex: 1 }} />
+          <Kicker>Or</Kicker>
+          <Divider style={{ flex: 1 }} />
+        </View>
+
+        <View style={styles.form}>
+          {!isLogin && (
+            <View style={styles.inputGroup}>
+              <Kicker>Display Name</Kicker>
+              <View style={styles.inputRow}>
+                <UserIcon size={15} color={C.textLight} strokeWidth={1.7} />
+                <TextInput
+                  placeholder="Anteater Study"
+                  placeholderTextColor={C.textLight}
+                  style={styles.input}
+                  value={displayName}
+                  onChangeText={(val) => {
+                    setDisplayName(val);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
+                  autoCapitalize="words"
+                  editable={!loading}
+                />
+              </View>
             </View>
-            <Text style={[styles.title, { color: themeColors.text }]}>
-              {isLogin ? 'Welcome Back' : 'Create Account'}
-            </Text>
-            <Text style={[styles.subtitle, { color: themeColors.textLight }]}>
-              {isLogin ? 'Sign in to rate café study vibes' : 'Join fellow UCI students on FindMyCafe'}
-            </Text>
+          )}
+
+          <View style={styles.inputGroup}>
+            <Kicker>Email Address</Kicker>
+            <View style={styles.inputRow}>
+              <Mail size={15} color={C.textLight} strokeWidth={1.7} />
+              <TextInput
+                placeholder="yourname@uci.edu"
+                placeholderTextColor={C.textLight}
+                style={styles.input}
+                value={email}
+                onChangeText={(val) => {
+                  setEmail(val);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                editable={!loading}
+              />
+            </View>
           </View>
 
-          {/* Inline Banners for Error or Success */}
-          {errorMessage && (
-            <View style={[styles.banner, styles.errorBanner]}>
-              <Ionicons name="alert-circle" size={18} color="#D32F2F" style={styles.bannerIcon} />
-              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+          <View style={styles.inputGroup}>
+            <Kicker>Password</Kicker>
+            <View style={styles.inputRow}>
+              <Lock size={15} color={C.textLight} strokeWidth={1.7} />
+              <TextInput
+                placeholder="••••••••"
+                placeholderTextColor={C.textLight}
+                style={styles.input}
+                value={password}
+                onChangeText={(val) => {
+                  setPassword(val);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                secureTextEntry
+                autoCapitalize="none"
+                editable={!loading}
+              />
             </View>
-          )}
+          </View>
 
-          {successMessage && (
-            <View style={[styles.banner, styles.successBanner]}>
-              <Ionicons name="checkmark-circle" size={18} color="#2E7D32" style={styles.bannerIcon} />
-              <Text style={styles.successBannerText}>{successMessage}</Text>
-            </View>
-          )}
+          <OutlineButton
+            label={loading ? 'Signing In…' : isLogin ? 'Sign In' : 'Create Account'}
+            onPress={handleAuth}
+            disabled={loading}
+            style={{ marginTop: SPACING.sm }}
+          />
+        </View>
 
-          {/* Google OAuth Button */}
-          <Pressable
-            onPress={handleGoogleAuth}
-            disabled={googleLoading || loading}
-            style={({ pressed }) => [
-              styles.googleBtn,
-              { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border },
-              (googleLoading || loading) && { opacity: 0.7 },
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            {googleLoading ? (
-              <ActivityIndicator size="small" color={themeColors.primary} />
-            ) : (
-              <>
-                <Ionicons name="logo-google" size={20} color="#EA4335" style={{ marginRight: 10 }} />
-                <Text style={[styles.googleBtnText, { color: themeColors.text }]}>Continue with Google</Text>
-              </>
-            )}
+        <View style={styles.footer}>
+          <Text style={[TYPE.metaSmall, { color: C.textMuted }]}>
+            {isLogin ? "Don't have an account?" : 'Already have an account?'}
+          </Text>
+          <Pressable onPress={toggleMode}>
+            <Text style={[TYPE.metaSmall, { color: C.accent700, textDecorationLine: 'underline' }]}>
+              {isLogin ? 'Create one' : 'Sign in'}
+            </Text>
           </Pressable>
+        </View>
 
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={[styles.dividerLine, { backgroundColor: themeColors.border }]} />
-            <Text style={[styles.dividerText, { color: themeColors.textMuted }]}>OR</Text>
-            <View style={[styles.dividerLine, { backgroundColor: themeColors.border }]} />
-          </View>
-
-          {/* Form */}
-          <View style={styles.form}>
-            {!isLogin && (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: themeColors.textMuted }]}>Display Name</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border }]}>
-                  <Ionicons name="person-outline" size={16} color={themeColors.textLight} style={styles.inputIcon} />
-                  <TextInput
-                    placeholder="Anteater Study"
-                    placeholderTextColor={themeColors.textLight}
-                    style={[styles.input, { color: themeColors.text }]}
-                    value={displayName}
-                    onChangeText={(val) => {
-                      setDisplayName(val);
-                      if (errorMessage) setErrorMessage(null);
-                    }}
-                    autoCapitalize="words"
-                    editable={!loading}
-                  />
-                </View>
-              </View>
-            )}
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: themeColors.textMuted }]}>Email Address</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border }]}>
-                <Ionicons name="mail-outline" size={16} color={themeColors.textLight} style={styles.inputIcon} />
-                <TextInput
-                  placeholder="yourname@uci.edu"
-                  placeholderTextColor={themeColors.textLight}
-                  style={[styles.input, { color: themeColors.text }]}
-                  value={email}
-                  onChangeText={(val) => {
-                    setEmail(val);
-                    if (errorMessage) setErrorMessage(null);
-                  }}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  editable={!loading}
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: themeColors.textMuted }]}>Password</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: themeColors.surfaceMuted, borderColor: themeColors.border }]}>
-                <Ionicons name="lock-closed-outline" size={16} color={themeColors.textLight} style={styles.inputIcon} />
-                <TextInput
-                  placeholder="••••••••"
-                  placeholderTextColor={themeColors.textLight}
-                  style={[styles.input, { color: themeColors.text }]}
-                  value={password}
-                  onChangeText={(val) => {
-                    setPassword(val);
-                    if (errorMessage) setErrorMessage(null);
-                  }}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  editable={!loading}
-                />
-              </View>
-            </View>
-
-            {/* Action Button */}
-            <Pressable
-              onPress={handleAuth}
-              disabled={loading}
-              style={({ pressed }) => [
-                styles.actionBtn,
-                { backgroundColor: themeColors.primary },
-                loading && { opacity: 0.7 },
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFF" size="small" />
-              ) : (
-                <Text style={styles.actionBtnText}>
-                  {isLogin ? 'Sign In' : 'Create Account'}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-
-          {/* Toggle Mode */}
-          <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: themeColors.textMuted }]}>
-              {isLogin ? "Don't have an account?" : 'Already have an account?'}
-            </Text>
-            <Pressable onPress={toggleMode} style={styles.toggleBtn}>
-              <Text style={[styles.toggleBtnText, { color: themeColors.primaryLight }]}>
-                {isLogin ? 'Create one' : 'Sign in'}
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Employee Login Entry Point */}
-          <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: themeColors.border, alignItems: 'center' }}>
-            <Pressable
-              onPress={() => router.push('/employee/login')}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}
-            >
-              <Ionicons name="briefcase-outline" size={16} color={themeColors.primary} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.primary }}>
-                Café Employee Login
-              </Text>
-            </Pressable>
-          </View>
+        <View style={styles.employeeWrap}>
+          <Divider style={{ marginBottom: SPACING.md, width: '100%' }} />
+          <Pressable onPress={() => router.push('/employee/login')} style={styles.employeeLink}>
+            <Briefcase size={15} color={C.accent700} strokeWidth={1.7} />
+            <Text style={[TYPE.metaSmall, { color: C.accent700 }]}>Café Employee Login</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -326,163 +289,78 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: C.bg },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: THEME.spacing.lg,
+    padding: SPACING.screen,
   },
-  card: {
-    borderWidth: 1,
-    borderRadius: THEME.roundness.md,
-    padding: THEME.spacing.lg,
-    width: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  banner: {
-    flexDirection: 'row',
+  logoWrap: {
     alignItems: 'center',
-    padding: THEME.spacing.sm + 2,
-    borderRadius: THEME.roundness.md,
-    marginBottom: THEME.spacing.md,
+    marginBottom: SPACING.lg,
   },
-  errorBanner: {
-    backgroundColor: '#FFEBEE',
-    borderWidth: 1,
-    borderColor: '#FFCDD2',
+  subtitle: {
+    color: C.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
   },
-  errorBannerText: {
-    color: '#C62828',
-    fontSize: THEME.typography.sizes.xs,
-    flex: 1,
-    fontWeight: '500',
-  },
-  successBanner: {
-    backgroundColor: '#E8F5E9',
-    borderWidth: 1,
-    borderColor: '#C8E6C9',
-  },
-  successBannerText: {
-    color: '#2E7D32',
-    fontSize: THEME.typography.sizes.xs,
-    flex: 1,
-    fontWeight: '500',
-  },
-  bannerIcon: {
-    marginRight: THEME.spacing.xs + 2,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: THEME.spacing.md,
+  messageText: {
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
   },
   googleBtn: {
-    height: 48,
-    borderRadius: THEME.roundness.md,
+    minHeight: 48,
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    borderColor: C.hairlineStrong,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    paddingHorizontal: THEME.spacing.md,
-    marginBottom: THEME.spacing.md,
-  },
-  googleBtnText: {
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: 'bold',
+    gap: 10,
+    marginBottom: SPACING.md,
   },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: THEME.spacing.md,
-    gap: THEME.spacing.sm,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  logoCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: THEME.spacing.md,
-  },
-  title: {
-    fontSize: THEME.typography.sizes.lg,
-    fontWeight: 'bold',
-    marginBottom: THEME.spacing.xs,
-  },
-  subtitle: {
-    fontSize: THEME.typography.sizes.xs,
-    textAlign: 'center',
-    paddingHorizontal: THEME.spacing.md,
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
   form: {
-    gap: THEME.spacing.md,
-    marginBottom: THEME.spacing.lg,
+    gap: SPACING.md,
   },
   inputGroup: {
-    gap: 4,
+    gap: 6,
   },
-  label: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  inputWrapper: {
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: THEME.roundness.md,
-    paddingHorizontal: THEME.spacing.md,
-    height: 46,
-  },
-  inputIcon: {
-    marginRight: THEME.spacing.sm,
+    gap: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: C.hairlineStrong,
+    paddingBottom: 8,
   },
   input: {
     flex: 1,
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: '500',
-  },
-  actionBtn: {
-    height: 48,
-    borderRadius: THEME.roundness.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: THEME.spacing.sm,
-  },
-  actionBtnText: {
-    color: '#FFF',
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: 'bold',
+    fontFamily: THEME.fonts.body,
+    fontSize: 15,
+    color: C.text,
+    paddingVertical: 4,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+    marginTop: SPACING.lg,
   },
-  footerText: {
-    fontSize: THEME.typography.sizes.xs,
+  employeeWrap: {
+    marginTop: SPACING.xl,
+    alignItems: 'center',
   },
-  toggleBtn: {
+  employeeLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingVertical: 4,
-  },
-  toggleBtnText: {
-    fontSize: THEME.typography.sizes.xs,
-    fontWeight: 'bold',
-    textDecorationLine: 'underline',
   },
 });
