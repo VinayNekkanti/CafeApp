@@ -18,7 +18,7 @@ import { openCafeDirections } from '../utils/directions';
 import { RouteResult } from '../services/routing';
 import { getOpenStatus } from '../utils/hours';
 import { CrowdMeter } from './classical';
-import { TriangleAlert, Map as MapIcon, CloudOff, Heart } from 'lucide-react-native';
+import { TriangleAlert, Map as MapIcon, CloudOff, Heart, Coffee, Leaf } from 'lucide-react-native';
 
 // Conditional import to prevent crash on web
 let MapView: any;
@@ -47,6 +47,21 @@ interface MapContainerProps {
   onSelectCafe: (cafeId: string) => void;
 }
 
+type MarkerIcon = 'coffee' | 'matcha';
+const MARKER_IMAGES: Record<MarkerIcon, any> = {
+  coffee: require('../../assets/images/coffee_marker.png'),
+  matcha: require('../../assets/images/matcha_marker.png'),
+};
+
+function resolveWebImageUrl(source: any): string {
+  try {
+    return typeof source === 'string' ? source : (source.uri || source.default || '');
+  } catch (e) {
+    console.error('Failed to resolve marker image', e);
+    return '';
+  }
+}
+
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.78;
 const CARD_SPACING = THEME.spacing.sm;
@@ -54,6 +69,40 @@ const CARD_SPACING = THEME.spacing.sm;
 // index back out of a scroll offset, and scrolling programmatically to a
 // given index. Keeping one formula for both stops them from disagreeing.
 const SLIDE_SIZE = CARD_WIDTH + CARD_SPACING * 2;
+
+/**
+ * Floating top-right button, map view only — switches which icon marks every
+ * café on the map (coffee cup / matcha cup). Shows the icon of the option
+ * you'll switch *to*.
+ */
+function MarkerIconToggle({ current, onPress }: { current: MarkerIcon; onPress: () => void }) {
+  const Icon = current === 'coffee' ? Leaf : Coffee;
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityLabel={current === 'coffee' ? 'Switch to matcha icon' : 'Switch to coffee icon'}
+      style={{
+        position: 'absolute',
+        top: 16,
+        right: 16,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: THEME.colors.bg,
+        borderWidth: 1,
+        borderColor: THEME.colors.hairlineStrong,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 50,
+        ...THEME.shadow.sm,
+      }}
+    >
+      <Icon size={19} color={THEME.colors.accent700} strokeWidth={1.7} />
+    </Pressable>
+  );
+}
 
 export const MapContainer: React.FC<MapContainerProps> = ({
   cafes,
@@ -74,6 +123,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
   const searchMarkerRef = useRef<any>(null);
   const webMarkersRef = useRef<any[]>([]);
   const [activeCafeIndex, setActiveCafeIndex] = useState(0);
+  const [markerIcon, setMarkerIcon] = useState<MarkerIcon>('coffee');
 
   // Web MapTiler state
   const [sdkLoaded, setSdkLoaded] = useState(false);
@@ -177,7 +227,9 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         : maptilersdk.MapStyle.STREETS,
       center: [centerLon, centerLat],
       zoom: 13,
-      navigationControl: true,
+      // top-left, so it doesn't collide with the marker-icon toggle button we
+      // render at top-right.
+      navigationControl: 'top-left',
       geolocateControl: true,
     });
 
@@ -189,6 +241,8 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         .setPopup(new maptilersdk.Popup({ offset: 25 }).setHTML('<h4 style="margin: 0; font-family: system-ui;">My Location</h4>'))
         .addTo(map);
     }
+
+    const markerImgUrl = resolveWebImageUrl(MARKER_IMAGES[markerIcon]);
 
     const markers: any[] = [];
     webMarkersRef.current = [];
@@ -243,14 +297,6 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         }
       });
 
-      let markerImgUrl = '';
-      try {
-        const source = require('../../assets/images/coffee_marker.png');
-        markerImgUrl = typeof source === 'string' ? source : (source.uri || source.default || '');
-      } catch (e) {
-        console.error('Failed to resolve coffee marker image', e);
-      }
-
       const isActive = index === activeCafeIndex;
 
       // Pin is just the coffee cup icon — no card, no label.
@@ -262,6 +308,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       el.style.cursor = 'pointer';
 
       const img = document.createElement('img');
+      img.dataset.role = 'marker-icon';
       img.src = markerImgUrl || '/assets/images/coffee_marker.png';
       img.style.width = '28px';
       img.style.height = '28px';
@@ -553,6 +600,21 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     });
   }, [activeCafeIndex, cafes]);
 
+  // Swap the icon on already-placed web markers in place, rather than
+  // rebuilding the whole map — the map-init effect above would otherwise
+  // have to depend on markerIcon too, tearing down and recentering the map
+  // just to change a pin image.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !webMarkersRef.current.length) return;
+    const url = resolveWebImageUrl(MARKER_IMAGES[markerIcon]);
+    if (!url) return;
+    webMarkersRef.current.forEach((marker) => {
+      const el = marker.getElement();
+      const img = el?.querySelector('[data-role="marker-icon"]') as HTMLImageElement | null;
+      if (img) img.src = url;
+    });
+  }, [markerIcon]);
+
   // Fallback UI and interactive UI for Web
   if (Platform.OS === 'web') {
     if (!isKeyConfigured) {
@@ -661,11 +723,16 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     // Render Web Map Container with floating carousel
     return (
       <View style={styles.container}>
-        <View 
-          ref={mapContainerRef} 
-          style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} 
+        <View
+          ref={mapContainerRef}
+          style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
         />
-        
+
+        <MarkerIconToggle
+          current={markerIcon}
+          onPress={() => setMarkerIcon((prev) => (prev === 'coffee' ? 'matcha' : 'coffee'))}
+        />
+
         {/* Floating Bottom Carousel Preview */}
         <View style={styles.carouselContainer}>
           <FlatList
@@ -807,10 +874,12 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           />
         )}
 
-        {/* Cafe Markers — just the coffee cup icon, no label */}
+        {/* Cafe Markers — just the icon, no label. Keying on markerIcon forces a
+            fresh Marker instance (and a fresh native snapshot) when the icon is
+            toggled, since tracksViewChanges={false} otherwise never re-renders it. */}
         {cafes.map((item, index) => (
           <Marker
-            key={item.id}
+            key={`${item.id}-${markerIcon}`}
             coordinate={{ latitude: item.latitude, longitude: item.longitude }}
             onPress={() => selectMarker(index)}
             tracksViewChanges={false}
@@ -819,13 +888,18 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           >
             <View style={{ alignItems: 'center', justifyContent: 'center' }}>
               <Image
-                source={require('../../assets/images/coffee_marker.png')}
+                source={MARKER_IMAGES[markerIcon]}
                 style={{ width: 28, height: 28, resizeMode: 'contain' }}
               />
             </View>
           </Marker>
         ))}
       </MapView>
+
+      <MarkerIconToggle
+        current={markerIcon}
+        onPress={() => setMarkerIcon((prev) => (prev === 'coffee' ? 'matcha' : 'coffee'))}
+      />
 
       {/* Floating Bottom Carousel Preview */}
       <View style={styles.carouselContainer}>
