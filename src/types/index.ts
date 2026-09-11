@@ -94,7 +94,6 @@ export interface StructuredPreferences {
   open_now_required?: boolean | null;
   open_after?: string | null;
   preferred_crowd_levels?: CrowdLevel[];
-  crowd_preference?: CrowdLevel[] | null;
   quietness?: 'Loud' | 'Moderate' | 'Quiet' | null;
   aesthetics_priority?: 'Low' | 'Medium' | 'High' | null;
   open_now?: boolean | null;

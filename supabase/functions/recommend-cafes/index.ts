@@ -55,12 +55,13 @@ serve(async (req) => {
       throw new Error('OPENAI_API_KEY is not configured on the server.');
     }
 
+    // Cheap, current model — good fit for a short classify-then-explain workload.
     const model = 'gpt-5.6-luna';
 
     // Build context-aware prompt using lastPreferences and recent message turns
     const recentTurns = (history || []).slice(-4).map((m: any) => `${m.sender}: ${m.text}`).join('\n');
 
-    const extractSystemPrompt = `You are an AI Assistant for people seeking café spots. The most often use cases that users will ask you will be in regards to studying. However they can also ask for cafes to just visit.'
+    const extractSystemPrompt = `You are an AI Assistant for people seeking café spots. The most common use case is studying, but users may also ask for cafés to just visit.
 Classify the user message into one of these intents:
 - "general_chat": Casual greetings or non-recommendation remarks (e.g. "hi", "hello", "thanks", "what can you do?")
 - "recommend_cafe": A new request for café recommendations
@@ -70,11 +71,11 @@ Classify the user message into one of these intents:
 Return JSON strictly matching this schema:
 {
   "intent": "general_chat" | "recommend_cafe" | "modify_recommendation" | "clarification",
-  "max_results": integer (1, 2, or 3. Default 3. "give me one" -> 1, "show two" -> 2),
+  "max_results": integer or null (the exact number the user asks for — "give me one" -> 1, "show two" -> 2, "show me 5" -> 5, "as many as you can" -> 999. Default null when unspecified.),
   "wifi_required": boolean or null,
   "max_distance_miles": number or null (e.g. "within 2 miles" -> 2),
   "open_now_required": boolean or null,
-  "crowd_preference": Array of ("Low" | "Moderate" | "Busy" | "Full") or null,
+  "preferred_crowd_levels": array of ("Low" | "Moderate" | "Busy" | "Full") or null,
   "quietness": ("Quiet" | "Moderate" | "Loud") or null,
   "sort_by": ("distance" | "crowd" | "quietness" | "aesthetics" | "rating" | "default") or null
 }
@@ -84,10 +85,14 @@ Rules:
 2. If previous preferences exist (${JSON.stringify(lastPreferences || {})}), preserve them unless the user explicitly overrides them.`;
 
     let preferences: any = { intent: 'recommend_cafe', max_results: 3 };
+    let preferencesExtracted = false;
 
-    // Try OpenAI Responses API (/v1/responses), fallback to Chat Completions if needed
+    // Preference extraction — Chat Completions only. (The Responses API branch this
+    // used to try first sent an invalid response_format for that endpoint and parsed
+    // a payload shape that endpoint doesn't return, so it silently never worked and
+    // every request fell back to these hardcoded defaults regardless of the query.)
     try {
-      const responseRes = await fetch('https://api.openai.com/v1/responses', {
+      const chatRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -95,45 +100,29 @@ Rules:
         },
         body: JSON.stringify({
           model,
-          input: [
+          response_format: { type: 'json_object' },
+          // This is reasoning-family model; a quick classification task needs none
+          // of its default reasoning depth — keeps it fast and cheap.
+          reasoning_effort: 'low',
+          messages: [
             { role: 'system', content: extractSystemPrompt },
             { role: 'user', content: `Recent context:\n${recentTurns}\n\nCurrent user message: "${query}"` },
           ],
-          response_format: { type: 'json_object' },
         }),
       });
 
-      if (responseRes.ok) {
-        const resData = await responseRes.json();
-        const outputText = resData.output?.[0]?.message?.content || resData.choices?.[0]?.message?.content || resData.output_text;
-        if (outputText) {
-          preferences = JSON.parse(outputText);
+      if (chatRes.ok) {
+        const chatData = await chatRes.json();
+        const content = chatData.choices?.[0]?.message?.content;
+        if (content) {
+          preferences = JSON.parse(content);
+          preferencesExtracted = true;
         }
       } else {
-        // Fallback to Chat Completions API
-        const chatRes = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openAiApiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            response_format: { type: 'json_object' },
-            messages: [
-              { role: 'system', content: extractSystemPrompt },
-              { role: 'user', content: `Recent context:\n${recentTurns}\n\nCurrent user message: "${query}"` },
-            ],
-          }),
-        });
-
-        if (chatRes.ok) {
-          const chatData = await chatRes.json();
-          preferences = JSON.parse(chatData.choices[0].message.content);
-        }
+        console.warn('OpenAI preference extraction failed:', chatRes.status, await chatRes.text());
       }
     } catch (e) {
-      console.warn('OpenAI preference extraction API call error, using local parsing:', e);
+      console.warn('OpenAI preference extraction API call error, using default preferences:', e);
     }
 
     // Merge previous preferences if intent is modify_recommendation
@@ -141,24 +130,30 @@ Rules:
       preferences = {
         ...lastPreferences,
         ...preferences,
+        // A modify turn that doesn't mention a count (e.g. "make it closer") would
+        // otherwise overwrite a previously requested count with the schema's null
+        // default, silently resetting it — so keep the prior count unless the model
+        // actually returned a new one this turn.
+        max_results: preferences.max_results ?? lastPreferences.max_results,
         wifi_required: preferences.wifi_required ?? lastPreferences.wifi_required,
         max_distance_miles: preferences.max_distance_miles ?? lastPreferences.max_distance_miles,
         open_now_required: preferences.open_now_required ?? lastPreferences.open_now_required,
-        crowd_preference: preferences.crowd_preference ?? lastPreferences.crowd_preference,
+        preferred_crowd_levels: preferences.preferred_crowd_levels ?? lastPreferences.preferred_crowd_levels,
+        quietness: preferences.quietness ?? lastPreferences.quietness,
       };
     }
 
     // Handle General Chat (no cards)
     if (preferences.intent === 'general_chat') {
-      const debugLog = {
+      console.log('[AI] mode=OPENAI payload=', JSON.stringify({
         intent: 'general_chat',
         max_results: 0,
         filters: {},
         candidate_count: cafes.length,
         selected_cafe_ids: [],
+        preferences_extracted: preferencesExtracted,
         ai_mode: 'OPENAI',
-      };
-      console.log('[AI] mode=OPENAI payload=', JSON.stringify(debugLog));
+      }));
 
       return new Response(
         JSON.stringify({
@@ -181,7 +176,6 @@ Rules:
         return {
           cafe,
           score: scoreResult.score,
-          reasons: scoreResult.reasons,
           excluded: scoreResult.excluded,
           distanceMiles: getDistance(userLat, userLon, cafe.latitude, cafe.longitude),
         };
@@ -197,7 +191,6 @@ Rules:
         return {
           cafe,
           score: scoreResult.score,
-          reasons: scoreResult.reasons,
           excluded: false,
           distanceMiles: getDistance(userLat, userLon, cafe.latitude, cafe.longitude),
         };
@@ -228,24 +221,26 @@ Rules:
       return b.score - a.score;
     });
 
-    const maxResults = Math.min(Math.max(preferences.max_results || 3, 1), 3);
+    // Honor whatever count the user asked for, capped only by how many cafés exist.
+    const maxResults = Math.min(Math.max(preferences.max_results || 3, 1), cafes.length);
     const topCafes = scoredCafes.slice(0, maxResults).map((c: any) => c.cafe);
 
-    const debugLog = {
+    console.log('[AI] mode=OPENAI payload=', JSON.stringify({
       intent: preferences.intent || 'recommend_cafe',
       max_results: maxResults,
       filters: {
         wifi_required: preferences.wifi_required,
         max_distance_miles: preferences.max_distance_miles,
         open_now_required: preferences.open_now_required,
-        crowd_preference: preferences.crowd_preference,
+        preferred_crowd_levels: preferences.preferred_crowd_levels,
+        quietness: preferences.quietness,
       },
       candidate_count: cafes.length,
       selected_cafe_ids: topCafes.map((c: any) => c.id),
+      preferences_extracted: preferencesExtracted,
       ai_mode: 'OPENAI',
       is_exact_match: isExactMatch,
-    };
-    console.log('[AI] mode=OPENAI payload=', JSON.stringify(debugLog));
+    }));
 
     // Explanation Generation Call (Single concise explanation pass)
     let explanation = '';
@@ -259,12 +254,14 @@ Cafés facts: ${JSON.stringify(topCafes.map((c: any) => ({
   address: c.address,
   wifi: c.wifi_available ? (c.wifi_quality || 'Available') : 'None',
   crowd: c.current_crowd_level ? `${c.current_crowd_level}/10` : 'Low',
+  crowd_last_updated: formatCrowdAge(c.crowd_updated_at),
 })))}
 
 Rules:
 1. ONLY state verified database facts provided above. Never invent hours or speeds.
 2. If is exact match is false, clearly state: "I couldn't find an exact match for all requirements in our database, but here is the best available alternative:"
-3. Keep explanation concise (100-200 tokens).`;
+3. If a café's crowd_last_updated shows no recent update, or one more than 30 minutes old, briefly note that its crowd status may be outdated.
+4. Keep explanation concise (100-200 tokens).`;
 
     try {
       const explainRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -275,7 +272,12 @@ Rules:
         },
         body: JSON.stringify({
           model,
-          max_tokens: 250,
+          // GPT-5-family models reject the legacy `max_tokens` param (400), and as a
+          // reasoning model they spend part of the completion budget on hidden
+          // reasoning tokens before writing output — low effort + more headroom
+          // keeps that from eating the whole budget and returning empty content.
+          reasoning_effort: 'low',
+          max_completion_tokens: 600,
           messages: [
             { role: 'system', content: 'You explain cafe recommendations using database facts only.' },
             { role: 'user', content: explainPrompt },
@@ -286,6 +288,11 @@ Rules:
       if (explainRes.ok) {
         const explainData = await explainRes.json();
         explanation = explainData.choices[0]?.message?.content || '';
+        if (!explanation) {
+          console.warn('Explanation generation returned empty content:', JSON.stringify(explainData).slice(0, 800));
+        }
+      } else {
+        console.warn('Explanation generation failed:', explainRes.status, await explainRes.text());
       }
     } catch (e) {
       console.warn('Explanation generation API error:', e);
@@ -300,7 +307,7 @@ Rules:
       topCafes.forEach((c: any, index: number) => {
         const crowd = c.current_crowd_level ? `${c.current_crowd_level}/10` : 'Low';
         const wifi = c.wifi_available ? `Wi-Fi (${c.wifi_quality || 'Available'})` : 'No Wi-Fi';
-        explanation += `${index + 1}. **${c.name}** — **${crowd} crowd level**, **${wifi}**.\n`;
+        explanation += `${index + 1}. **${c.name}** — **${crowd} crowd level** (${formatCrowdAge(c.crowd_updated_at)}), **${wifi}**.\n`;
       });
     }
 
@@ -342,16 +349,18 @@ function calculateScoreLocally(cafe: any, hours: any[], userLat: number, userLon
     }
   }
 
-  if (excluded) return { score: 0, reasons: [], excluded: true };
+  if (excluded) return { score: 0, excluded: true };
 
+  // A. Distance
   let distScore = 100;
   if (distanceMiles > 0.2) {
     distScore = Math.max(0, 100 - ((distanceMiles - 0.2) / 4.8) * 100);
   }
 
-  let crowdScore = 50;
+  // B. Crowd level, boosted/penalized against any preferred crowd levels
   const crowdVal = cafe.current_crowd_level;
   const parsedCrowd = typeof crowdVal === 'number' ? crowdVal : parseInt(String(crowdVal), 10);
+  let crowdScore = 50;
   if (!isNaN(parsedCrowd)) {
     crowdScore = Math.max(10, 100 - (parsedCrowd - 1) * 10);
   } else if (crowdVal === 'Low') crowdScore = 100;
@@ -359,12 +368,26 @@ function calculateScoreLocally(cafe: any, hours: any[], userLat: number, userLon
   else if (crowdVal === 'Busy') crowdScore = 35;
   else if (crowdVal === 'Full') crowdScore = 5;
 
-  const quietVal = Number(cafe.avg_quietness) || 0;
-  const quietScore = quietVal > 0 ? ((quietVal - 1) / 2) * 100 : 50;
+  if (prefs?.preferred_crowd_levels?.length) {
+    const bandOf = (n: number) => (n <= 3 ? 'Low' : n <= 6 ? 'Moderate' : n <= 8 ? 'Busy' : 'Full');
+    const cafeBand = !isNaN(parsedCrowd) ? bandOf(parsedCrowd) : crowdVal;
+    const matches = prefs.preferred_crowd_levels.includes(cafeBand);
+    crowdScore = matches ? 100 : 15;
+  }
 
+  // C. Quietness, weighted toward the requested quietness level when given
+  const quietVal = Number(cafe.avg_quietness) || 0;
+  let quietScore = quietVal > 0 ? ((quietVal - 1) / 2) * 100 : 50;
+  if (prefs?.quietness && quietVal > 0) {
+    const targetVal = prefs.quietness === 'Quiet' ? 3 : prefs.quietness === 'Moderate' ? 2 : 1;
+    quietScore = Math.max(0, 100 - Math.abs(quietVal - targetVal) * 50);
+  }
+
+  // D. Aesthetics
   const aesVal = Number(cafe.avg_aesthetics) || 0;
   const aesScore = aesVal > 0 ? ((aesVal - 1) / 4) * 100 : 50;
 
+  // E. Wi-Fi
   let wifiScore = 0;
   if (cafe.wifi_available) {
     if (cafe.wifi_quality === 'Excellent') wifiScore = 100;
@@ -377,9 +400,20 @@ function calculateScoreLocally(cafe: any, hours: any[], userLat: number, userLon
 
   return {
     score: Math.round(finalScore),
-    reasons: [],
     excluded: false,
   };
+}
+
+// "Last updated" is surfaced, never used to filter or score — see design discussion.
+function formatCrowdAge(updatedAt?: string | null): string {
+  if (!updatedAt) return 'no recent update';
+  const diffMs = Date.now() - new Date(updatedAt).getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'updated just now';
+  if (diffMins < 60) return `updated ${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `updated ${diffHours}h ago`;
+  return `updated ${Math.floor(diffHours / 24)}d ago`;
 }
 
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
