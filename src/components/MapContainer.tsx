@@ -50,6 +50,10 @@ interface MapContainerProps {
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.78;
 const CARD_SPACING = THEME.spacing.sm;
+// Shared by both directions of the carousel<->map sync: reading the settled
+// index back out of a scroll offset, and scrolling programmatically to a
+// given index. Keeping one formula for both stops them from disagreeing.
+const SLIDE_SIZE = CARD_WIDTH + CARD_SPACING * 2;
 
 export const MapContainer: React.FC<MapContainerProps> = ({
   cafes,
@@ -305,11 +309,13 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     };
   }, [sdkLoaded, cafes, userLat, userLon]);
 
-  // Synchronize map focus when selecting a cafe card
-  const onCardScroll = (event: any) => {
-    const slideSize = CARD_WIDTH + CARD_SPACING * 2;
-    const index = Math.round(event.nativeEvent.contentOffset.x / slideSize);
-    
+  // Fires once the carousel finishes settling on a card (swipe momentum ending,
+  // or a scrollToOffset from selectMarker below) — not on every scroll frame,
+  // so an in-flight programmatic scroll doesn't get read as a sweep through
+  // every index it passes on the way to its target.
+  const onCardSettle = (event: any) => {
+    const index = Math.round(event.nativeEvent.contentOffset.x / SLIDE_SIZE);
+
     if (index >= 0 && index < cafes.length && index !== activeCafeIndex) {
       setActiveCafeIndex(index);
       const activeCafe = cafes[index];
@@ -338,13 +344,16 @@ export const MapContainer: React.FC<MapContainerProps> = ({
   const selectMarker = (index: number) => {
     setActiveCafeIndex(index);
     if (listRef.current) {
-      listRef.current.scrollToIndex({
-        index,
+      // scrollToOffset with the same SLIDE_SIZE math onCardSettle reads back —
+      // scrollToIndex's viewPosition centering used a different offset formula
+      // than the swipe-snap layout, so the settle handler would read back the
+      // wrong index after a pin tap and re-pan the map to the wrong café.
+      listRef.current.scrollToOffset({
+        offset: index * SLIDE_SIZE,
         animated: true,
-        viewPosition: 0.5,
       });
     }
-    
+
     // Fly to marker location on web if clicked
     if (Platform.OS === 'web' && mapRef.current && cafes[index]) {
       mapRef.current.flyTo({
@@ -650,13 +659,12 @@ export const MapContainer: React.FC<MapContainerProps> = ({
             horizontal
             pagingEnabled
             decelerationRate="fast"
-            snapToInterval={CARD_WIDTH + CARD_SPACING * 2}
+            snapToInterval={SLIDE_SIZE}
             snapToAlignment="center"
             showsHorizontalScrollIndicator={false}
             data={cafes}
             keyExtractor={(item) => item.id}
-            onScroll={onCardScroll}
-            scrollEventThrottle={32}
+            onMomentumScrollEnd={onCardSettle}
             contentContainerStyle={{
               paddingHorizontal: (width - CARD_WIDTH) / 2 - CARD_SPACING,
             }}
@@ -814,13 +822,12 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           horizontal
           pagingEnabled
           decelerationRate="fast"
-          snapToInterval={CARD_WIDTH + CARD_SPACING * 2}
+          snapToInterval={SLIDE_SIZE}
           snapToAlignment="center"
           showsHorizontalScrollIndicator={false}
           data={cafes}
           keyExtractor={(item) => item.id}
-          onScroll={onCardScroll}
-          scrollEventThrottle={32}
+          onMomentumScrollEnd={onCardSettle}
           contentContainerStyle={{
             paddingHorizontal: Platform.OS === 'android' ? CARD_SPACING : (width - CARD_WIDTH) / 2 - CARD_SPACING,
           }}
