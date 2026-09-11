@@ -183,13 +183,16 @@ export const MapContainer: React.FC<MapContainerProps> = ({
 
     mapRef.current = map;
 
-    // The stock STREETS style renders motorway/trunk lines in yellow — recolor
-    // them gray to match the muted map treatment. Matched by layer id rather
-    // than a hardcoded list, since exact ids can vary by style/version.
+    // The stock STREETS style colors road classes differently (motorways
+    // yellow, primary roads orange, etc). Recolor every road line the same
+    // muted gray. Matched by source-layer rather than a hardcoded id list —
+    // MapTiler's OpenMapTiles-based styles put all road (and rail) lines in
+    // a "transportation" source-layer regardless of class, so this catches
+    // every road type without guessing individual layer ids.
     map.on('load', () => {
       const style = map.getStyle?.();
       (style?.layers || []).forEach((layer: any) => {
-        if (layer.type === 'line' && /motorway|trunk|highway/i.test(layer.id)) {
+        if (layer.type === 'line' && layer['source-layer'] === 'transportation') {
           try {
             map.setPaintProperty(layer.id, 'line-color', '#c7c2ba');
           } catch (e) {
@@ -793,10 +796,9 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           { elementType: 'labels.text.stroke', stylers: [{ color: '#f3f2f2' }] },
           { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
           { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#eae9e9' }] },
-          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#e0dede' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#c7c2ba' }] },
+          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#c7c2ba' }] },
           { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9b9797' }] },
-          { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#c7c2ba' }] },
           { featureType: 'transit', stylers: [{ visibility: 'off' }] },
           { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#e6e4e4' }] },
         ]}
