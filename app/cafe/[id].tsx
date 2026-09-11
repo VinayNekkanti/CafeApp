@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Heart } from 'lucide-react-native';
+import { Heart } from 'lucide-react-native';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocation } from '../../src/context/LocationContext';
 import { getCafes, getCafeHours, getFavorites, submitCafeReview, submitRating, getCafeReviews, toggleFavorite } from '../../src/services/data';
@@ -183,9 +183,6 @@ export default function CafeProfileScreen() {
           )}
 
           <View style={[styles.heroOverlayRow, { top: insets.top + 8 }]}>
-            <Pressable onPress={() => router.back()} style={styles.circleBtn} hitSlop={4}>
-              <ChevronLeft size={20} color={C.text} strokeWidth={1.9} />
-            </Pressable>
             <Pressable onPress={handleFavoriteToggle} style={[styles.circleBtn, isFavorite && styles.circleBtnActive]} hitSlop={4}>
               <Heart size={17} strokeWidth={1.7} color={isFavorite ? C.accent700 : C.textMuted} fill={isFavorite ? C.accent700 : 'none'} />
             </Pressable>
@@ -330,7 +327,7 @@ const styles = StyleSheet.create({
     left: 18,
     right: 18,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
   },
   circleBtn: {
     width: 44,
