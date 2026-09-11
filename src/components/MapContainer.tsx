@@ -324,12 +324,13 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           latitudeDelta: 0.015,
           longitudeDelta: 0.015,
         },
-        350
+        220
       );
     } else if (Platform.OS === 'web' && mapRef.current) {
       mapRef.current.flyTo({
         center: [activeCafe.longitude, activeCafe.latitude],
         zoom: 14.5,
+        duration: 450,
         essential: true,
       });
     }
@@ -337,16 +338,18 @@ export const MapContainer: React.FC<MapContainerProps> = ({
 
   // react-native-web's ScrollView never actually fires onMomentumScrollEnd —
   // it's declared in its prop types but never invoked, so that's a dead
-  // listener on web. Debouncing onScroll ourselves (reading the position 120ms
-  // after scroll events stop) gives the same "wait for it to actually settle"
-  // behavior on every platform, web included.
+  // listener on web. Debouncing onScroll ourselves (reading the position
+  // shortly after scroll events stop) gives the same "wait for it to actually
+  // settle" behavior on every platform, web included. Kept short enough to
+  // feel responsive but still comfortably longer than the gap between scroll
+  // events during an active swipe, so it won't fire mid-scroll.
   const scrollSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onCardScroll = (event: any) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     if (scrollSettleTimer.current) clearTimeout(scrollSettleTimer.current);
     scrollSettleTimer.current = setTimeout(() => {
       settleOnIndex(Math.round(offsetX / SLIDE_SIZE));
-    }, 120);
+    }, 70);
   };
 
   useEffect(() => {
@@ -373,6 +376,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       mapRef.current.flyTo({
         center: [cafes[index].longitude, cafes[index].latitude],
         zoom: 14.5,
+        duration: 450,
         essential: true,
       });
     }
