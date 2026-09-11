@@ -248,37 +248,21 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       }
 
       const isActive = index === activeCafeIndex;
-      const distanceLabel = formatDistance(calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude)).toUpperCase();
 
-      // Pin as a small card — icon + distance, hairline border, accent only when selected.
+      // Pin is just the coffee cup icon — no card, no label.
       const el = document.createElement('div');
       el.className = 'custom-web-marker';
       el.style.display = 'flex';
       el.style.alignItems = 'center';
-      el.style.gap = '7px';
-      el.style.minHeight = '44px';
-      el.style.padding = '10px 12px';
-      el.style.borderRadius = '4px';
-      el.style.backgroundColor = themeColors.bg;
-      el.style.border = `1px solid ${isActive ? themeColors.accent : themeColors.hairlineStrong}`;
-      el.style.boxShadow = '0 1px 2px rgba(45,43,43,0.14)';
+      el.style.justifyContent = 'center';
       el.style.cursor = 'pointer';
 
       const img = document.createElement('img');
       img.src = markerImgUrl || '/assets/images/coffee_marker.png';
-      img.style.width = '20px';
-      img.style.height = '20px';
+      img.style.width = '28px';
+      img.style.height = '28px';
       img.style.objectFit = 'contain';
       el.appendChild(img);
-
-      const distEl = document.createElement('span');
-      distEl.dataset.role = 'distance-label';
-      distEl.textContent = distanceLabel;
-      distEl.style.fontFamily = "'Lora_400Regular', Georgia, serif";
-      distEl.style.fontSize = '11px';
-      distEl.style.letterSpacing = '0.06em';
-      distEl.style.color = isActive ? themeColors.accent700 : themeColors.text;
-      el.appendChild(distEl);
 
       if (isActive) {
         el.style.zIndex = '999';
@@ -542,15 +526,9 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     webMarkersRef.current.forEach((marker, index) => {
       const el = marker.getElement();
       if (!el) return;
-      const isActive = index === activeCafeIndex;
-      el.style.zIndex = isActive ? '999' : 'auto';
-      el.style.border = `1px solid ${isActive ? themeColors.accent : themeColors.hairlineStrong}`;
-      const distEl = el.querySelector('[data-role="distance-label"]') as HTMLElement | null;
-      if (distEl) {
-        distEl.style.color = isActive ? themeColors.accent700 : themeColors.text;
-      }
+      el.style.zIndex = index === activeCafeIndex ? '999' : 'auto';
     });
-  }, [activeCafeIndex, cafes, themeColors]);
+  }, [activeCafeIndex, cafes]);
 
   // Fallback UI and interactive UI for Web
   if (Platform.OS === 'web') {
@@ -809,33 +787,24 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           />
         )}
 
-        {/* Cafe Markers — a small hairline card (icon + distance), not a bare pin.
-            tracksViewChanges stays false for perf, so this card doesn't re-skin
-            on selection; the carousel card below is the reactive indicator. */}
-        {cafes.map((item, index) => {
-          const distanceLabel = formatDistance(
-            calculateDistance(userLat, userLon, item.latitude, item.longitude)
-          ).toUpperCase();
-
-          return (
-            <Marker
-              key={item.id}
-              coordinate={{ latitude: item.latitude, longitude: item.longitude }}
-              onPress={() => selectMarker(index)}
-              tracksViewChanges={false}
-              anchor={{ x: 0.5, y: 0.5 }}
-              zIndex={index === activeCafeIndex ? 999 : 1}
-            >
-              <View style={styles.pinCard}>
-                <Image
-                  source={require('../../assets/images/coffee_marker.png')}
-                  style={{ width: 20, height: 20, resizeMode: 'contain' }}
-                />
-                <Text style={styles.pinCardText}>{distanceLabel}</Text>
-              </View>
-            </Marker>
-          );
-        })}
+        {/* Cafe Markers — just the coffee cup icon, no label */}
+        {cafes.map((item, index) => (
+          <Marker
+            key={item.id}
+            coordinate={{ latitude: item.latitude, longitude: item.longitude }}
+            onPress={() => selectMarker(index)}
+            tracksViewChanges={false}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={index === activeCafeIndex ? 999 : 1}
+          >
+            <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+              <Image
+                source={require('../../assets/images/coffee_marker.png')}
+                style={{ width: 28, height: 28, resizeMode: 'contain' }}
+              />
+            </View>
+          </Marker>
+        ))}
       </MapView>
 
       {/* Floating Bottom Carousel Preview */}
@@ -942,23 +911,6 @@ const styles = StyleSheet.create({
   map: {
     width: '100%',
     height: '100%',
-  },
-  pinCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    minHeight: 44,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: THEME.radius.md,
-    borderWidth: 1,
-    borderColor: THEME.colors.hairlineStrong,
-    backgroundColor: THEME.colors.bg,
-    ...THEME.shadow.sm,
-  },
-  pinCardText: {
-    ...THEME.type.meta,
-    color: THEME.colors.text,
   },
   carouselContainer: {
     position: 'absolute',
