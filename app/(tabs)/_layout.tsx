@@ -18,12 +18,16 @@ const { type: TYPE, fonts: FONTS } = THEME;
 function makeTabButton(Icon: LucideIcon, label: string, C: ReturnType<typeof useAppTheme>['colors']) {
   return function TabButton({
     onPress,
-    accessibilityState,
+    'aria-selected': ariaSelected,
   }: {
     onPress?: (e: GestureResponderEvent) => void;
-    accessibilityState?: { selected?: boolean };
+    'aria-selected'?: boolean;
   }) {
-    const focused = !!accessibilityState?.selected;
+    // This expo-router version passes focus state to a custom tabBarButton as
+    // aria-selected, not the accessibilityState:{selected} object the older
+    // React Navigation API used — reading the latter here silently left every
+    // tab permanently "unfocused" (no tint, no border, never bold).
+    const focused = !!ariaSelected;
     const tint = focused ? C.accent700 : C.textLight;
     return (
       <Pressable
