@@ -8,6 +8,7 @@ import {
   Lora_400Regular,
   Lora_400Regular_Italic,
   Lora_500Medium,
+  Lora_700Bold,
 } from '@expo-google-fonts/lora';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -46,6 +47,7 @@ export default function RootLayout() {
     Lora_400Regular,
     Lora_400Regular_Italic,
     Lora_500Medium,
+    Lora_700Bold,
   });
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.

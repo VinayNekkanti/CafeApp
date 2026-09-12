@@ -7,7 +7,7 @@ import type { LucideIcon } from 'lucide-react-native';
 import { THEME } from '../../src/constants/theme';
 import { useAppTheme } from '../../src/context/ThemeContext';
 
-const { type: TYPE } = THEME;
+const { type: TYPE, fonts: FONTS } = THEME;
 
 /**
  * A tab's whole active affordance is a 2px accent rule on its own top edge —
@@ -40,8 +40,8 @@ function makeTabButton(Icon: LucideIcon, label: string, C: ReturnType<typeof use
           borderTopColor: focused ? C.accent : 'transparent',
         }}
       >
-        <Icon size={19} color={tint} strokeWidth={1.6} />
-        <Text style={[TYPE.tab, { color: tint }]}>{label}</Text>
+        <Icon size={19} color={tint} strokeWidth={focused ? 2.1 : 1.6} />
+        <Text style={[TYPE.tab, { color: tint, fontFamily: focused ? FONTS.bodyBold : FONTS.body }]}>{label}</Text>
       </Pressable>
     );
   };
