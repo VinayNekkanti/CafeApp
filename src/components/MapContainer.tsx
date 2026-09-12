@@ -159,6 +159,12 @@ export const MapContainer: React.FC<MapContainerProps> = ({
   onSelectCafe,
 }) => {
   const { colors: themeColors, mode: markerIcon } = useAppTheme();
+  // The floating carousel card is a themed surface, not the neutral card
+  // everything else uses: matcha -> light green bg / dark green text,
+  // coffee -> dark brown bg / light tan text (inverted so text stays legible
+  // against whichever tone the background ends up).
+  const cardBg = markerIcon === 'matcha' ? themeColors.accent100 : themeColors.accent700;
+  const cardFg = markerIcon === 'matcha' ? themeColors.accent700 : themeColors.accent100;
 
   const mapRef = useRef<any>(null);
   const listRef = useRef<FlatList>(null);
@@ -770,18 +776,18 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                   style={({ pressed }) => [
                     styles.card,
                     {
-                      backgroundColor: themeColors.surface,
-                      borderColor: index === activeCafeIndex ? themeColors.accent700 : themeColors.hairlineStrong,
+                      backgroundColor: cardBg,
+                      borderColor: index === activeCafeIndex ? cardFg : cardFg + '40',
                     },
                     pressed && { opacity: 0.95 },
                   ]}
                 >
                   <View style={styles.cardHeader}>
-                    <Text style={[styles.cardTitle, { color: themeColors.text }]} numberOfLines={1}>
+                    <Text style={[styles.cardTitle, { color: cardFg }]} numberOfLines={1}>
                       {item.name}
                     </Text>
                     <View style={styles.cardHeaderRight}>
-                      <Text style={[styles.cardDistance, { color: themeColors.accent700 }]}>
+                      <Text style={[styles.cardDistance, { color: cardFg }]}>
                         {formatDistance(distance)}
                       </Text>
                       {onToggleFavorite && (
@@ -799,29 +805,24 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                           <Heart
                             size={18}
                             strokeWidth={1.7}
-                            color={favoriteIds.includes(item.id) ? themeColors.accent700 : themeColors.textLight}
-                            fill={favoriteIds.includes(item.id) ? themeColors.accent700 : 'none'}
+                            color={favoriteIds.includes(item.id) ? cardFg : cardFg + 'aa'}
+                            fill={favoriteIds.includes(item.id) ? cardFg : 'none'}
                           />
                         </Pressable>
                       )}
                     </View>
                   </View>
-                  <Text style={[styles.cardAddress, { color: themeColors.textMuted }]} numberOfLines={1}>
+                  <Text style={[styles.cardAddress, { color: cardFg }]} numberOfLines={1}>
                     {item.address}
                   </Text>
                   <View style={styles.cardFooter}>
                     <View style={styles.crowdRow}>
-                      <CrowdMeter level={crowdLevel} size={6} />
-                      <Text style={styles.badgeText}>
+                      <CrowdMeter level={crowdLevel} size={6} color={cardFg} trackColor={cardFg + '55'} />
+                      <Text style={[styles.badgeText, { color: cardFg }]}>
                         {crowdLevel}/10 · {crowdLabel(crowdLevel)}
                       </Text>
                     </View>
-                    <Text
-                      style={[
-                        styles.openStatus,
-                        { color: openStatus.isOpen ? themeColors.accent700 : themeColors.textMuted },
-                      ]}
-                    >
+                    <Text style={[styles.openStatus, { color: cardFg }]}>
                       {openStatus.isOpen ? 'Open Now' : 'Closed'}
                     </Text>
                   </View>
@@ -935,18 +936,18 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                 style={({ pressed }) => [
                   styles.card,
                   {
-                    backgroundColor: themeColors.surface,
-                    borderColor: index === activeCafeIndex ? themeColors.accent700 : themeColors.hairlineStrong,
+                    backgroundColor: cardBg,
+                    borderColor: index === activeCafeIndex ? cardFg : cardFg + '40',
                   },
                   pressed && { opacity: 0.95 },
                 ]}
               >
                 <View style={styles.cardHeader}>
-                  <Text style={[styles.cardTitle, { color: themeColors.text }]} numberOfLines={1}>
+                  <Text style={[styles.cardTitle, { color: cardFg }]} numberOfLines={1}>
                     {item.name}
                   </Text>
                   <View style={styles.cardHeaderRight}>
-                    <Text style={[styles.cardDistance, { color: themeColors.accent700 }]}>
+                    <Text style={[styles.cardDistance, { color: cardFg }]}>
                       {formatDistance(distance)}
                     </Text>
                     {onToggleFavorite && (
@@ -968,29 +969,24 @@ export const MapContainer: React.FC<MapContainerProps> = ({
                         <Heart
                           size={18}
                           strokeWidth={1.7}
-                          color={favoriteIds.includes(item.id) ? themeColors.accent700 : themeColors.textLight}
-                          fill={favoriteIds.includes(item.id) ? themeColors.accent700 : 'none'}
+                          color={favoriteIds.includes(item.id) ? cardFg : cardFg + 'aa'}
+                          fill={favoriteIds.includes(item.id) ? cardFg : 'none'}
                         />
                       </Pressable>
                     )}
                   </View>
                 </View>
-                <Text style={[styles.cardAddress, { color: themeColors.textMuted }]} numberOfLines={1}>
+                <Text style={[styles.cardAddress, { color: cardFg }]} numberOfLines={1}>
                   {item.address}
                 </Text>
                 <View style={styles.cardFooter}>
                   <View style={styles.crowdRow}>
-                    <CrowdMeter level={crowdLevel} size={6} />
-                    <Text style={styles.badgeText}>
+                    <CrowdMeter level={crowdLevel} size={6} color={cardFg} trackColor={cardFg + '55'} />
+                    <Text style={[styles.badgeText, { color: cardFg }]}>
                       {crowdLevel}/10 · {crowdLabel(crowdLevel)}
                     </Text>
                   </View>
-                  <Text
-                    style={[
-                      styles.openStatus,
-                      { color: openStatus.isOpen ? themeColors.accent700 : themeColors.textMuted },
-                    ]}
-                  >
+                  <Text style={[styles.openStatus, { color: cardFg }]}>
                     {openStatus.isOpen ? 'Open Now' : 'Closed'}
                   </Text>
                 </View>

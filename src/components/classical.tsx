@@ -24,9 +24,14 @@ export function Kicker({ children, tone = 'muted', style }: {
 /**
  * Crowd level as ten steps — replaces the old colored crowd pill.
  * Always pair with the numeric label; the meter alone is not accessible.
+ * `color`/`trackColor` let a caller override the filled/unfilled dot colors
+ * for use on a non-default (e.g. tinted) background, where the theme's own
+ * accent700/hairlineStrong might not have enough contrast.
  */
-export function CrowdMeter({ level, size = 9 }: { level: number; size?: number }) {
+export function CrowdMeter({ level, size = 9, color, trackColor }: { level: number; size?: number; color?: string; trackColor?: string }) {
   const { colors: C } = useAppTheme();
+  const filled = color ?? C.accent700;
+  const unfilled = trackColor ?? C.hairlineStrong;
   const gap = size <= 6 ? 2.5 : 4;
   return (
     <View
@@ -42,8 +47,8 @@ export function CrowdMeter({ level, size = 9 }: { level: number; size?: number }
             height: size,
             borderRadius: size / 2,
             borderWidth: 1,
-            borderColor: i < level ? C.accent700 : C.hairlineStrong,
-            backgroundColor: i < level ? C.accent700 : 'transparent',
+            borderColor: i < level ? filled : unfilled,
+            backgroundColor: i < level ? filled : 'transparent',
           }}
         />
       ))}
