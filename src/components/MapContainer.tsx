@@ -165,6 +165,10 @@ export const MapContainer: React.FC<MapContainerProps> = ({
   // against whichever tone the background ends up).
   const cardBg = markerIcon === 'matcha' ? themeColors.accent100 : themeColors.accent700;
   const cardFg = markerIcon === 'matcha' ? themeColors.accent700 : themeColors.accent100;
+  // The matcha art carries its own solid background square (left as-is, not
+  // keyed transparent) so it reads a bit bigger on the map than the coffee
+  // cup's plain silhouette.
+  const markerIconSize = markerIcon === 'matcha' ? 36 : 28;
 
   const mapRef = useRef<any>(null);
   const listRef = useRef<FlatList>(null);
@@ -326,8 +330,8 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       const img = document.createElement('img');
       img.dataset.role = 'marker-icon';
       img.src = markerImgUrl || '/assets/images/coffee_marker.png';
-      img.style.width = '28px';
-      img.style.height = '28px';
+      img.style.width = `${markerIconSize}px`;
+      img.style.height = `${markerIconSize}px`;
       img.style.objectFit = 'contain';
       el.appendChild(img);
 
@@ -641,12 +645,16 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     webMarkersRef.current.forEach((marker, i) => {
       const el = marker.getElement();
       const img = el?.querySelector('[data-role="marker-icon"]') as HTMLImageElement | null;
-      if (img && url) img.src = url;
+      if (img) {
+        if (url) img.src = url;
+        img.style.width = `${markerIconSize}px`;
+        img.style.height = `${markerIconSize}px`;
+      }
       const cafe = cafes[i];
       const popup = marker.getPopup?.();
       if (cafe && popup) popup.setHTML(buildPopupHtml(cafe, themeColors));
     });
-  }, [markerIcon, themeColors, cafes]);
+  }, [markerIcon, markerIconSize, themeColors, cafes]);
 
   // Fallback UI and interactive UI for Web
   if (Platform.OS === 'web') {
@@ -914,7 +922,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
             <View style={{ alignItems: 'center', justifyContent: 'center' }}>
               <Image
                 source={MARKER_IMAGES[markerIcon]}
-                style={{ width: 28, height: 28, resizeMode: 'contain' }}
+                style={{ width: markerIconSize, height: markerIconSize, resizeMode: 'contain' }}
               />
             </View>
           </Marker>
