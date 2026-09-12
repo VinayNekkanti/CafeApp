@@ -17,6 +17,7 @@ import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { LocationProvider } from '../src/context/LocationContext';
+import { ThemeProvider, useAppTheme } from '../src/context/ThemeContext';
 import { THEME } from '../src/constants/theme';
 import LoadingScreen from '../src/components/LoadingScreen';
 
@@ -63,17 +64,18 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <LocationProvider>
-        <RootLayoutNav />
-      </LocationProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <LocationProvider>
+          <RootLayoutNav />
+        </LocationProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
 function RootLayoutNav() {
-  // Classical is a single warm-paper palette — no dark-mode branch.
-  const themeColors = THEME.colors;
+  const { colors: themeColors } = useAppTheme();
   const router = useRouter();
   const segments = useSegments();
   const { user, isProfileComplete, loading: authLoading } = useAuth();

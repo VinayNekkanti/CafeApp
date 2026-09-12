@@ -17,13 +17,15 @@ import { Mail, Lock, User as UserIcon, Briefcase } from 'lucide-react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '../src/context/AuthContext';
 import { supabase } from '../src/services/supabase';
-import { THEME } from '../src/constants/theme';
+import { THEME, COLORS } from '../src/constants/theme';
+import { useAppTheme } from '../src/context/ThemeContext';
 import { Divider, Kicker, OutlineButton, Plate } from '../src/components/classical';
 
-const { colors: C, spacing: SPACING, type: TYPE } = THEME;
+const { spacing: SPACING, type: TYPE } = THEME;
 
 export default function AuthScreen() {
   const router = useRouter();
+  const { colors: C } = useAppTheme();
   const { signInWithGoogle } = useAuth();
 
   const [isLogin, setIsLogin] = useState(true);
@@ -157,7 +159,7 @@ export default function AuthScreen() {
           <Plate size={64}>
             <Image source={require('../assets/images/logo.png')} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           </Plate>
-          <Text style={[TYPE.screenTitle, { color: C.text, marginTop: SPACING.md }]}>
+          <Text style={[TYPE.screenTitle, { color: COLORS.text, marginTop: SPACING.md }]}>
             {isLogin ? 'Welcome back' : 'Create account'}
           </Text>
           <Text style={[TYPE.bodyTight, styles.subtitle]}>
@@ -289,7 +291,7 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -300,7 +302,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
   subtitle: {
-    color: C.textSecondary,
+    color: COLORS.textSecondary,
     textAlign: 'center',
     marginTop: 4,
   },
@@ -312,7 +314,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: THEME.radius.md,
     borderWidth: 1,
-    borderColor: C.hairlineStrong,
+    borderColor: COLORS.hairlineStrong,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -336,14 +338,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: C.hairlineStrong,
+    borderBottomColor: COLORS.hairlineStrong,
     paddingBottom: 8,
   },
   input: {
     flex: 1,
     fontFamily: THEME.fonts.body,
     fontSize: 15,
-    color: C.text,
+    color: COLORS.text,
     paddingVertical: 4,
   },
   footer: {

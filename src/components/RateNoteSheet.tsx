@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { X } from 'lucide-react-native';
-import { THEME } from '../constants/theme';
+import { THEME, COLORS } from '../constants/theme';
+import { useAppTheme } from '../context/ThemeContext';
 import { Divider, Kicker, OutlineButton, Chip } from './classical';
 
-const { colors: C, spacing: SPACING, radius: RADIUS, type: TYPE } = THEME;
+const { spacing: SPACING, radius: RADIUS, type: TYPE } = THEME;
 
 /**
  * One bottom sheet, two modes — replaces the old RatingModal + ReviewModal.
@@ -47,6 +48,7 @@ export default function RateNoteSheet({
   onSubmitRating,
   onSubmitNote,
 }: RateNoteSheetProps) {
+  const { colors: C } = useAppTheme();
   const [quietness, setQuietness] = useState(initialQuietness);
   const [stars, setStars] = useState(initialAesthetics);
   const [noteText, setNoteText] = useState('');
@@ -180,15 +182,15 @@ export default function RateNoteSheet({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: C.scrim,
+    backgroundColor: COLORS.scrim,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: C.bg,
+    backgroundColor: COLORS.bg,
     borderTopLeftRadius: RADIUS.lg,
     borderTopRightRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: C.hairlineStrong,
+    borderColor: COLORS.hairlineStrong,
     borderBottomWidth: 0,
     paddingTop: SPACING.lg,
     paddingHorizontal: SPACING.screen,
@@ -197,7 +199,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 26,
     lineHeight: 30,
-    color: C.text,
+    color: COLORS.text,
     marginTop: 6,
   },
   headerRow: {
@@ -231,18 +233,18 @@ const styles = StyleSheet.create({
   },
   starWord: {
     fontStyle: 'italic',
-    color: C.textSecondary,
+    color: COLORS.textSecondary,
     marginTop: SPACING.sm,
   },
   textInput: {
     minHeight: 124,
     borderWidth: 1,
-    borderColor: C.hairlineStrong,
+    borderColor: COLORS.hairlineStrong,
     borderRadius: RADIUS.md,
-    backgroundColor: C.surfaceAlt,
+    backgroundColor: COLORS.surfaceAlt,
     padding: SPACING.md,
     ...TYPE.body,
-    color: C.text,
+    color: COLORS.text,
   },
   noteFooter: {
     flexDirection: 'row',

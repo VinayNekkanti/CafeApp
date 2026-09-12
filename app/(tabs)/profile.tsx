@@ -6,12 +6,13 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useLocation } from '../../src/context/LocationContext';
 import { getCafes, getCafeHoursBatch, getFavorites, toggleFavorite } from '../../src/services/data';
 import { Cafe, CafeHours } from '../../src/types';
-import { THEME, crowdLevelNumber } from '../../src/constants/theme';
+import { THEME, COLORS, crowdLevelNumber } from '../../src/constants/theme';
+import { useAppTheme } from '../../src/context/ThemeContext';
 import { Divider, Kicker, OutlineButton, Plate } from '../../src/components/classical';
 import { calculateDistance, formatDistance } from '../../src/utils/distance';
 import LoadingScreen from '../../src/components/LoadingScreen';
 
-const { colors: C, spacing: SPACING, type: TYPE } = THEME;
+const { spacing: SPACING, type: TYPE } = THEME;
 
 /** The 52px favorites row — see design handoff README, "5. Profile / Favorites". */
 function FavoriteRow({ cafe, userLat, userLon, onRemove, onPress }: {
@@ -21,6 +22,7 @@ function FavoriteRow({ cafe, userLat, userLon, onRemove, onPress }: {
   onRemove: () => void;
   onPress: () => void;
 }) {
+  const { colors: C } = useAppTheme();
   const distanceMiles = calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude);
   const crowdLevel = crowdLevelNumber(cafe.current_crowd_level);
 
@@ -42,6 +44,7 @@ function FavoriteRow({ cafe, userLat, userLon, onRemove, onPress }: {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { colors: C } = useAppTheme();
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const { location } = useLocation();
 
@@ -115,7 +118,7 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.signedOutWrap}>
-          <View style={styles.signedOutIconCircle}>
+          <View style={[styles.signedOutIconCircle, { borderColor: C.accent }]}>
             <Heart size={22} color={C.accent700} strokeWidth={1.5} />
           </View>
           <Text style={[TYPE.screenTitle, { fontSize: 30, color: C.text, marginTop: SPACING.lg }]}>
@@ -153,8 +156,8 @@ export default function ProfileScreen() {
             <Divider style={{ marginTop: SPACING.md, marginHorizontal: SPACING.screen }} />
 
             <View style={[styles.identityRow, { paddingHorizontal: SPACING.screen }]}>
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarLetter}>{initial}</Text>
+              <View style={[styles.avatarCircle, { borderColor: C.accent }]}>
+                <Text style={[styles.avatarLetter, { color: C.accent700 }]}>{initial}</Text>
               </View>
               <View>
                 <Text style={[TYPE.cardTitle, { fontSize: 24, color: C.text }]}>{displayName}</Text>
@@ -213,7 +216,7 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   listContent: { paddingBottom: 40 },
   signedOutWrap: {
     flex: 1,
@@ -226,12 +229,12 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: 32,
     borderWidth: 1,
-    borderColor: C.accent,
+    // borderColor is accent-variant — applied inline at the usage site.
     alignItems: 'center',
     justifyContent: 'center',
   },
   signedOutBody: {
-    color: C.textSecondary,
+    color: COLORS.textSecondary,
     textAlign: 'center',
     maxWidth: 280,
     marginTop: SPACING.sm,
@@ -247,14 +250,14 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: C.accent,
+    // borderColor is accent-variant — applied inline at the usage site.
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarLetter: {
     fontFamily: THEME.fonts.display,
     fontSize: 26,
-    color: C.accent700,
+    // color is accent-variant — applied inline at the usage site.
   },
   employeeRow: {
     flexDirection: 'row',
@@ -262,14 +265,14 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: C.divider,
+    borderBottomColor: COLORS.divider,
   },
   favRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: C.divider,
+    borderTopColor: COLORS.divider,
     paddingVertical: SPACING.md,
   },
   favHeartBtn: {
@@ -281,7 +284,7 @@ const styles = StyleSheet.create({
   },
   emptyFavRow: {
     borderTopWidth: 1,
-    borderTopColor: C.divider,
+    borderTopColor: COLORS.divider,
     paddingVertical: 27.6,
   },
 });

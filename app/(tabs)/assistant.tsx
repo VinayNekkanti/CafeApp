@@ -16,12 +16,13 @@ import { supabase } from '../../src/services/supabase';
 import { useLocation } from '../../src/context/LocationContext';
 import { getCafes, getCafeHoursBatch } from '../../src/services/data';
 import { Cafe, CafeHours, StructuredPreferences } from '../../src/types';
-import { THEME, crowdLevelNumber } from '../../src/constants/theme';
+import { THEME, COLORS, crowdLevelNumber } from '../../src/constants/theme';
+import { useAppTheme } from '../../src/context/ThemeContext';
 import { Divider, Kicker, Chip, Plate } from '../../src/components/classical';
 import { rankCafes } from '../../src/utils/recommendation';
 import { calculateDistance, formatDistance, estimateWalkingTime } from '../../src/utils/distance';
 
-const { colors: C, spacing: SPACING, radius: RADIUS, type: TYPE } = THEME;
+const { spacing: SPACING, radius: RADIUS, type: TYPE } = THEME;
 
 interface Message {
   id: string;
@@ -67,6 +68,7 @@ function parseRequestedCount(qTrim: string): number | undefined {
 
 /** A recommendation pick — hangs below the assistant bubble, full width. */
 function PickRow({ cafe, userLat, userLon, onPress }: { cafe: Cafe; userLat: number; userLon: number; onPress: () => void }) {
+  const { colors: C } = useAppTheme();
   const distanceMiles = calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude);
   const walkMins = estimateWalkingTime(distanceMiles);
   const crowdLevel = crowdLevelNumber(cafe.current_crowd_level);
@@ -88,6 +90,7 @@ function PickRow({ cafe, userLat, userLon, onPress }: { cafe: Cafe; userLat: num
 
 export default function AIAssistantScreen() {
   const router = useRouter();
+  const { colors: C } = useAppTheme();
   const { location } = useLocation();
 
   const [messages, setMessages] = useState<Message[]>([
@@ -365,7 +368,7 @@ export default function AIAssistantScreen() {
             <Pressable
               onPress={() => handleSend()}
               disabled={loading || !inputText.trim()}
-              style={[styles.sendBtn, (loading || !inputText.trim()) && { opacity: 0.4 }]}
+              style={[styles.sendBtn, { borderColor: C.accent }, (loading || !inputText.trim()) && { opacity: 0.4 }]}
             >
               <ArrowRight size={17} color={C.accent700} strokeWidth={1.7} />
             </Pressable>
@@ -382,7 +385,7 @@ export default function AIAssistantScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   keyboardView: { flex: 1 },
   header: {
     paddingHorizontal: SPACING.screen,
@@ -406,10 +409,10 @@ const styles = StyleSheet.create({
   assistantBubble: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: C.divider,
+    borderColor: COLORS.divider,
   },
   userBubble: {
-    backgroundColor: C.text,
+    backgroundColor: COLORS.text,
   },
   picksWrap: {
     marginTop: SPACING.md,
@@ -420,12 +423,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     borderTopWidth: 1,
-    borderTopColor: C.divider,
+    borderTopColor: COLORS.divider,
     paddingVertical: SPACING.md,
   },
   composerWrap: {
     borderTopWidth: 1,
-    borderTopColor: C.divider,
+    borderTopColor: COLORS.divider,
     paddingHorizontal: SPACING.screen,
     paddingVertical: SPACING.sm,
   },
@@ -438,10 +441,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     borderBottomWidth: 1,
-    borderBottomColor: C.hairlineStrong,
+    borderBottomColor: COLORS.hairlineStrong,
     fontFamily: THEME.fonts.body,
     fontSize: 14.5,
-    color: C.text,
+    color: COLORS.text,
     paddingVertical: 9,
   },
   sendBtn: {
@@ -449,7 +452,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: C.accent,
+    // accent color applied inline at the usage site — it's theme-variant.
     alignItems: 'center',
     justifyContent: 'center',
   },

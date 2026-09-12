@@ -12,7 +12,8 @@ import {
   View,
 } from 'react-native';
 import { Cafe, CafeHours } from '../types';
-import { THEME, crowdLabel, crowdLevelNumber } from '../constants/theme';
+import { THEME, ThemeMode, crowdLabel, crowdLevelNumber } from '../constants/theme';
+import { useAppTheme } from '../context/ThemeContext';
 import { calculateDistance, formatDistance } from '../utils/distance';
 import { openCafeDirections } from '../utils/directions';
 import { RouteResult } from '../services/routing';
@@ -47,11 +48,49 @@ interface MapContainerProps {
   onSelectCafe: (cafeId: string) => void;
 }
 
-type MarkerIcon = 'coffee' | 'matcha';
-const MARKER_IMAGES: Record<MarkerIcon, any> = {
+// The marker icon follows the app-wide theme mode 1:1 (coffee mode -> coffee
+// pin, matcha mode -> matcha pin) — see ThemeContext.
+const MARKER_IMAGES: Record<ThemeMode, any> = {
   coffee: require('../../assets/images/coffee_marker.png'),
   matcha: require('../../assets/images/matcha_marker.png'),
 };
+
+/** Popup HTML for one café marker — a function of (cafe, current theme colors)
+ * so it can be regenerated on a theme toggle without rebuilding the marker. */
+function buildPopupHtml(cafe: Cafe, C: ReturnType<typeof useAppTheme>['colors']): string {
+  return `
+    <div style="font-family: 'Lora_400Regular', Georgia, serif; padding: 4px; color: ${C.text}; background: ${C.bg};">
+      <h4 style="margin: 0 0 4px 0; font-family: 'CormorantGaramond_600SemiBold', serif; font-size: 17px; font-weight: normal;">${cafe.name}</h4>
+      <p style="margin: 0 0 8px 0; font-size: 11px; color: ${C.textMuted};">${cafe.address}</p>
+      <div style="display: flex; gap: 6px;">
+        <button id="details-btn-${cafe.id}" style="
+          flex: 1;
+          background-color: transparent;
+          color: ${C.text};
+          border: 1px solid ${C.hairlineStrong};
+          padding: 8px 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          cursor: pointer;
+        ">Details</button>
+        <button id="directions-btn-${cafe.id}" style="
+          flex: 1;
+          background-color: transparent;
+          color: ${C.accent700};
+          border: 1px solid ${C.accent};
+          padding: 8px 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          cursor: pointer;
+        ">Directions</button>
+      </div>
+    </div>
+  `;
+}
 
 function resolveWebImageUrl(source: any): string {
   try {
@@ -71,18 +110,21 @@ const CARD_SPACING = THEME.spacing.sm;
 const SLIDE_SIZE = CARD_WIDTH + CARD_SPACING * 2;
 
 /**
- * Floating top-right button, map view only — switches which icon marks every
- * café on the map (coffee cup / matcha cup). Shows the icon of the option
- * you'll switch *to*.
+ * Floating top-right button, map view only — switches the whole app's theme
+ * between coffee (brown) and matcha (green), which also swaps every café pin
+ * to match. Shows the icon of the option you'll switch *to*. Self-contained:
+ * reads and flips the theme directly rather than taking props, since it's
+ * the one control for a genuinely global setting.
  */
-function MarkerIconToggle({ current, onPress }: { current: MarkerIcon; onPress: () => void }) {
-  const Icon = current === 'coffee' ? Leaf : Coffee;
+function MarkerIconToggle() {
+  const { mode, colors: C, toggleMode } = useAppTheme();
+  const Icon = mode === 'coffee' ? Leaf : Coffee;
   return (
     <Pressable
-      onPress={onPress}
+      onPress={toggleMode}
       hitSlop={4}
       accessibilityRole="button"
-      accessibilityLabel={current === 'coffee' ? 'Switch to matcha icon' : 'Switch to coffee icon'}
+      accessibilityLabel={mode === 'coffee' ? 'Switch to matcha theme' : 'Switch to coffee theme'}
       style={{
         position: 'absolute',
         top: 16,
@@ -99,7 +141,7 @@ function MarkerIconToggle({ current, onPress }: { current: MarkerIcon; onPress: 
         ...THEME.shadow.sm,
       }}
     >
-      <Icon size={19} color={THEME.colors.accent700} strokeWidth={1.7} />
+      <Icon size={19} color={C.accent700} strokeWidth={1.7} />
     </Pressable>
   );
 }
@@ -116,14 +158,13 @@ export const MapContainer: React.FC<MapContainerProps> = ({
   onToggleFavorite,
   onSelectCafe,
 }) => {
-  const themeColors = THEME.colors;
+  const { colors: themeColors, mode: markerIcon } = useAppTheme();
 
   const mapRef = useRef<any>(null);
   const listRef = useRef<FlatList>(null);
   const searchMarkerRef = useRef<any>(null);
   const webMarkersRef = useRef<any[]>([]);
   const [activeCafeIndex, setActiveCafeIndex] = useState(0);
-  const [markerIcon, setMarkerIcon] = useState<MarkerIcon>('coffee');
 
   // Web MapTiler state
   const [sdkLoaded, setSdkLoaded] = useState(false);
@@ -247,38 +288,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     const markers: any[] = [];
     webMarkersRef.current = [];
     cafes.forEach((cafe, index) => {
-      const popupHtml = `
-        <div style="font-family: 'Lora_400Regular', Georgia, serif; padding: 4px; color: ${themeColors.text}; background: ${themeColors.bg};">
-          <h4 style="margin: 0 0 4px 0; font-family: 'CormorantGaramond_600SemiBold', serif; font-size: 17px; font-weight: normal;">${cafe.name}</h4>
-          <p style="margin: 0 0 8px 0; font-size: 11px; color: ${themeColors.textMuted};">${cafe.address}</p>
-          <div style="display: flex; gap: 6px;">
-            <button id="details-btn-${cafe.id}" style="
-              flex: 1;
-              background-color: transparent;
-              color: ${themeColors.text};
-              border: 1px solid ${themeColors.hairlineStrong};
-              padding: 8px 8px;
-              border-radius: 4px;
-              font-size: 10px;
-              letter-spacing: 0.06em;
-              text-transform: uppercase;
-              cursor: pointer;
-            ">Details</button>
-            <button id="directions-btn-${cafe.id}" style="
-              flex: 1;
-              background-color: transparent;
-              color: ${themeColors.accent700};
-              border: 1px solid ${themeColors.accent};
-              padding: 8px 8px;
-              border-radius: 4px;
-              font-size: 10px;
-              letter-spacing: 0.06em;
-              text-transform: uppercase;
-              cursor: pointer;
-            ">Directions</button>
-          </div>
-        </div>
-      `;
+      const popupHtml = buildPopupHtml(cafe, themeColors);
 
       const popup = new maptilersdk.Popup({ offset: 25 }).setHTML(popupHtml);
 
@@ -600,20 +610,22 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     });
   }, [activeCafeIndex, cafes]);
 
-  // Swap the icon on already-placed web markers in place, rather than
-  // rebuilding the whole map — the map-init effect above would otherwise
-  // have to depend on markerIcon too, tearing down and recentering the map
-  // just to change a pin image.
+  // Swap the icon AND popup colors on already-placed web markers in place,
+  // rather than rebuilding the whole map — the map-init effect above would
+  // otherwise have to depend on the theme too, tearing down and recentering
+  // the map just to change a pin image and some button colors.
   useEffect(() => {
     if (Platform.OS !== 'web' || !webMarkersRef.current.length) return;
     const url = resolveWebImageUrl(MARKER_IMAGES[markerIcon]);
-    if (!url) return;
-    webMarkersRef.current.forEach((marker) => {
+    webMarkersRef.current.forEach((marker, i) => {
       const el = marker.getElement();
       const img = el?.querySelector('[data-role="marker-icon"]') as HTMLImageElement | null;
-      if (img) img.src = url;
+      if (img && url) img.src = url;
+      const cafe = cafes[i];
+      const popup = marker.getPopup?.();
+      if (cafe && popup) popup.setHTML(buildPopupHtml(cafe, themeColors));
     });
-  }, [markerIcon]);
+  }, [markerIcon, themeColors, cafes]);
 
   // Fallback UI and interactive UI for Web
   if (Platform.OS === 'web') {
@@ -728,10 +740,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
         />
 
-        <MarkerIconToggle
-          current={markerIcon}
-          onPress={() => setMarkerIcon((prev) => (prev === 'coffee' ? 'matcha' : 'coffee'))}
-        />
+        <MarkerIconToggle />
 
         {/* Floating Bottom Carousel Preview */}
         <View style={styles.carouselContainer}>
@@ -896,10 +905,7 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         ))}
       </MapView>
 
-      <MarkerIconToggle
-        current={markerIcon}
-        onPress={() => setMarkerIcon((prev) => (prev === 'coffee' ? 'matcha' : 'coffee'))}
-      />
+      <MarkerIconToggle />
 
       {/* Floating Bottom Carousel Preview */}
       <View style={styles.carouselContainer}>

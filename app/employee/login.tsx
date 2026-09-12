@@ -14,14 +14,14 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '../../src/services/supabase';
 import { getEmployeeAssignment } from '../../src/services/data';
-import { THEME } from '../../src/constants/theme';
+import { useAppTheme } from '../../src/context/ThemeContext';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 // NOTE: not yet migrated to the Classical design (see design handoff README) —
 // this is a minimal compile fix onto the new flat theme shape, not a redesign.
 export default function EmployeeLoginScreen() {
   const router = useRouter();
-  const themeColors = THEME.colors;
+  const { colors: themeColors } = useAppTheme();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

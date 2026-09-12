@@ -19,14 +19,15 @@ import { getCafes, getCafeHoursBatch, getFavorites, toggleFavorite } from '../..
 import { fetchRoute, RouteResult } from '../../src/services/routing';
 import { openCafeDirections } from '../../src/utils/directions';
 import { Cafe, CafeHours } from '../../src/types';
-import { THEME, crowdLabel, crowdLevelNumber } from '../../src/constants/theme';
+import { THEME, COLORS, crowdLabel, crowdLevelNumber } from '../../src/constants/theme';
+import { useAppTheme } from '../../src/context/ThemeContext';
 import { Divider, Kicker, CrowdMeter, OutlineButton, Chip, Plate } from '../../src/components/classical';
 import { getOpenStatus } from '../../src/utils/hours';
 import { calculateDistance, formatDistance, estimateWalkingTime } from '../../src/utils/distance';
 import MapContainer from '../../src/components/MapContainer';
 import LoadingScreen from '../../src/components/LoadingScreen';
 
-const { colors: C, spacing: SPACING, radius: RADIUS, type: TYPE, shadow: SHADOW } = THEME;
+const { spacing: SPACING, radius: RADIUS, type: TYPE, shadow: SHADOW } = THEME;
 
 /** The 76px café row that fills the Explore list — see design handoff README, "1. Explore / List". */
 function ExploreRow({
@@ -46,6 +47,7 @@ function ExploreRow({
   onToggleFavorite: () => void;
   onPress: () => void;
 }) {
+  const { colors: C } = useAppTheme();
   const distanceMiles = calculateDistance(userLat, userLon, cafe.latitude, cafe.longitude);
   const walkMins = estimateWalkingTime(distanceMiles);
   const openStatus = getOpenStatus(hours);
@@ -108,6 +110,7 @@ function ExploreRow({
 export default function ExploreScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ routeCafeId?: string }>();
+  const { colors: C } = useAppTheme();
 
   const { user } = useAuth();
   const { location, loading: locationLoading, requestLocationPermission } = useLocation();
@@ -281,7 +284,7 @@ export default function ExploreScreen() {
       </View>
 
       {location.isFallback && (
-        <View style={styles.locationBanner}>
+        <View style={[styles.locationBanner, { backgroundColor: C.accent100 }]}>
           <Text style={[TYPE.metaSmall, { color: C.accent700, flex: 1 }]}>
             Location disabled. Showing spots near UC Irvine campus.
           </Text>
@@ -390,7 +393,7 @@ export default function ExploreScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: C.bg },
+  safeArea: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     paddingHorizontal: SPACING.screen,
     paddingTop: 14,
@@ -409,7 +412,7 @@ const styles = StyleSheet.create({
   segmented: {
     flexDirection: 'row',
     borderWidth: 1,
-    borderColor: C.divider,
+    borderColor: COLORS.divider,
     borderRadius: RADIUS.md,
     overflow: 'hidden',
   },
@@ -420,7 +423,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   segmentBtnActive: {
-    backgroundColor: C.text,
+    backgroundColor: COLORS.text,
   },
   searchRow: {
     flexDirection: 'row',
@@ -428,14 +431,14 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     marginTop: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: C.hairlineStrong,
+    borderBottomColor: COLORS.hairlineStrong,
     paddingBottom: 8,
   },
   searchInput: {
     flex: 1,
     fontFamily: THEME.fonts.body,
     fontSize: 15,
-    color: C.text,
+    color: COLORS.text,
     paddingVertical: 6,
   },
   chipRow: {
@@ -450,7 +453,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: 8,
     paddingHorizontal: SPACING.screen,
-    backgroundColor: C.accent100,
+    // backgroundColor is accent-variant — applied inline at the usage site.
   },
   listContent: {
     paddingHorizontal: SPACING.screen,
@@ -465,7 +468,7 @@ const styles = StyleSheet.create({
   },
   row: {
     borderTopWidth: 1,
-    borderTopColor: C.divider,
+    borderTopColor: COLORS.divider,
     paddingVertical: SPACING.lg,
   },
   rowInner: {
@@ -515,9 +518,9 @@ const styles = StyleSheet.create({
     top: 16,
     left: 12,
     right: 12,
-    backgroundColor: C.bg,
+    backgroundColor: COLORS.bg,
     borderWidth: 1,
-    borderColor: C.hairlineStrong,
+    borderColor: COLORS.hairlineStrong,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     ...SHADOW.sm,

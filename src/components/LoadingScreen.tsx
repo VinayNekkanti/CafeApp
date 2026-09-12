@@ -1,13 +1,14 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { THEME } from '../constants/theme';
+import { useAppTheme } from '../context/ThemeContext';
 
 interface LoadingScreenProps {
   message?: string;
 }
 
 export const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Brewing your coffee spot list...' }) => {
-  const themeColors = THEME.colors;
+  const { colors: themeColors } = useAppTheme();
 
   return (
     <View style={[styles.container, { backgroundColor: themeColors.bg }]}>
