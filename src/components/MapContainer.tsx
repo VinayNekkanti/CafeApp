@@ -431,13 +431,28 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       });
     }
 
-    // Fly to marker location on web if clicked
-    if (Platform.OS === 'web' && mapRef.current && cafes[index]) {
+    // Tapping a pin zooms in closer than a carousel scroll does (see
+    // settleOnIndex) — a deliberate tap on one café is a stronger signal
+    // than swiping past it, so it earns a tighter, street-level view.
+    const cafe = cafes[index];
+    if (!cafe) return;
+    if (Platform.OS === 'web' && mapRef.current) {
       mapRef.current.flyTo({
-        center: [cafes[index].longitude, cafes[index].latitude],
-        zoom: 14.5,
+        center: [cafe.longitude, cafe.latitude],
+        zoom: 17,
+        duration: 700,
         essential: true,
       });
+    } else if (Platform.OS !== 'web' && mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: cafe.latitude,
+          longitude: cafe.longitude,
+          latitudeDelta: 0.005,
+          longitudeDelta: 0.005,
+        },
+        500
+      );
     }
   };
 
