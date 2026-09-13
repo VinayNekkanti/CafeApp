@@ -13,7 +13,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { getEmployeeAssignment, getCafes, submitEmployeeCrowdLevel } from '../../src/services/data';
 import { Cafe, CafeEmployee } from '../../src/types';
-import { THEME } from '../../src/constants/theme';
+import { useAppTheme } from '../../src/context/ThemeContext';
 import LoadingScreen from '../../src/components/LoadingScreen';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -21,7 +21,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 // this is a minimal compile fix onto the new flat theme shape, not a redesign.
 export default function EmployeeDashboardScreen() {
   const router = useRouter();
-  const themeColors = THEME.colors;
+  const { colors: themeColors } = useAppTheme();
   const { signOut, user } = useAuth();
 
   const [assignment, setAssignment] = useState<CafeEmployee | null>(null);

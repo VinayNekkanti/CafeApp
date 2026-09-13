@@ -3,12 +3,14 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput
 import { User } from 'lucide-react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { supabase } from '../src/services/supabase';
-import { THEME } from '../src/constants/theme';
+import { THEME, COLORS } from '../src/constants/theme';
+import { useAppTheme } from '../src/context/ThemeContext';
 import { Kicker, OutlineButton } from '../src/components/classical';
 
-const { colors: C, spacing: SPACING, type: TYPE } = THEME;
+const { spacing: SPACING, type: TYPE } = THEME;
 
 export default function OnboardingScreen() {
+  const { colors: C } = useAppTheme();
   const { user, profile, refreshProfile } = useAuth();
 
   const [firstName, setFirstName] = useState(profile?.first_name || '');
@@ -67,7 +69,7 @@ export default function OnboardingScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <View style={styles.iconCircle}>
+          <View style={[styles.iconCircle, { borderColor: C.accent }]}>
             <User size={30} color={C.accent700} strokeWidth={1.6} />
           </View>
           <Text style={[TYPE.screenTitle, { color: C.text, marginTop: SPACING.md }]}>Complete Your Profile</Text>
@@ -131,7 +133,7 @@ export default function OnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -146,17 +148,17 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: 32,
     borderWidth: 1,
-    borderColor: C.accent,
+    // borderColor is accent-variant — applied inline at the usage site.
     alignItems: 'center',
     justifyContent: 'center',
   },
   subtitle: {
-    color: C.textSecondary,
+    color: COLORS.textSecondary,
     textAlign: 'center',
     marginTop: 6,
   },
   errorText: {
-    color: C.danger,
+    color: COLORS.danger,
     textAlign: 'center',
     marginBottom: SPACING.md,
   },
@@ -169,9 +171,9 @@ const styles = StyleSheet.create({
   input: {
     fontFamily: THEME.fonts.body,
     fontSize: 15,
-    color: C.text,
+    color: COLORS.text,
     borderBottomWidth: 1,
-    borderBottomColor: C.hairlineStrong,
+    borderBottomColor: COLORS.hairlineStrong,
     paddingVertical: 8,
   },
 });

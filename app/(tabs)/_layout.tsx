@@ -5,14 +5,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MapPin, MessageSquare, User } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { THEME } from '../../src/constants/theme';
+import { useAppTheme } from '../../src/context/ThemeContext';
 
-const { colors: C, type: TYPE } = THEME;
+const { type: TYPE } = THEME;
 
 /**
  * A tab's whole active affordance is a 2px accent rule on its own top edge —
  * no pill, no background fill. See design handoff README, "Tab bar".
+ * Takes the current theme colors explicitly (rather than closing over a
+ * module-level constant) since it needs to react to the matcha toggle.
  */
-function makeTabButton(Icon: LucideIcon, label: string) {
+function makeTabButton(Icon: LucideIcon, label: string, C: ReturnType<typeof useAppTheme>['colors']) {
   return function TabButton({
     onPress,
     accessibilityState,
@@ -46,6 +49,7 @@ function makeTabButton(Icon: LucideIcon, label: string) {
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { colors: C } = useAppTheme();
 
   return (
     <Tabs
@@ -65,21 +69,21 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Explore',
-          tabBarButton: makeTabButton(MapPin, 'Explore'),
+          tabBarButton: makeTabButton(MapPin, 'Explore', C),
         }}
       />
       <Tabs.Screen
         name="assistant"
         options={{
           title: 'Assistant',
-          tabBarButton: makeTabButton(MessageSquare, 'Assistant'),
+          tabBarButton: makeTabButton(MessageSquare, 'Assistant', C),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarButton: makeTabButton(User, 'Profile'),
+          tabBarButton: makeTabButton(User, 'Profile', C),
         }}
       />
     </Tabs>

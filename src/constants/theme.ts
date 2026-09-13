@@ -9,7 +9,8 @@
  *  - all figures tabular: fontVariant: ['tabular-nums'].
  */
 
-export const COLORS = {
+/** Every token that does NOT change between the coffee and matcha themes. */
+const BASE_COLORS = {
   bg: '#f3f2f2',
   surface: '#eae9e9',
   surfaceAlt: '#f8f4f4',
@@ -19,12 +20,6 @@ export const COLORS = {
   textMuted: '#605d5d',
   textLight: '#9b9797',
   inverseText: '#f8f4f4',
-
-  accent: '#b68235',
-  accent100: '#fff3e4',
-  accent200: '#ffe3bf',
-  accent600: '#a06f24',
-  accent700: '#7d5411',
 
   neutral200: '#eae7e7',
   neutral300: '#d7d3d3',
@@ -38,6 +33,36 @@ export const COLORS = {
   /** Kept only for destructive copy. The redesign carries no semantic fills. */
   danger: '#b91c1c',
 } as const;
+
+export type ThemeMode = 'coffee' | 'matcha';
+
+/** The one family of tokens that swaps between themes — everything "brown". */
+const ACCENTS: Record<ThemeMode, { accent: string; accent100: string; accent200: string; accent600: string; accent700: string }> = {
+  coffee: {
+    accent: '#b68235',
+    accent100: '#fff3e4',
+    accent200: '#ffe3bf',
+    accent600: '#a06f24',
+    accent700: '#7d5411',
+  },
+  matcha: {
+    accent: '#7c9a3e',
+    accent100: '#eef3df',
+    accent200: '#dce8c2',
+    accent600: '#61812e',
+    accent700: '#4f6b23',
+  },
+};
+
+export function colorsFor(mode: ThemeMode) {
+  return { ...BASE_COLORS, ...ACCENTS[mode] } as const;
+}
+
+/** Static coffee-theme colors — the default, and a fallback for anything that
+ * can't reach the theme context (e.g. code outside the component tree). Most
+ * UI should read colors from useAppTheme() instead so it responds to the
+ * matcha toggle. */
+export const COLORS = colorsFor('coffee');
 
 export const SPACING = {
   xs: 4.6,

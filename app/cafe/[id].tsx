@@ -7,7 +7,8 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useLocation } from '../../src/context/LocationContext';
 import { getCafes, getCafeHours, getFavorites, submitCafeReview, submitRating, getCafeReviews, toggleFavorite } from '../../src/services/data';
 import { Cafe, CafeHours, CafeReview } from '../../src/types';
-import { THEME, crowdLabel, crowdLevelNumber } from '../../src/constants/theme';
+import { THEME, COLORS, crowdLabel, crowdLevelNumber } from '../../src/constants/theme';
+import { useAppTheme } from '../../src/context/ThemeContext';
 import { Divider, Kicker, CrowdMeter, OutlineButton } from '../../src/components/classical';
 import { calculateDistance, formatDistance, estimateWalkingTime, estimateDrivingTime } from '../../src/utils/distance';
 import { getOpenStatus, formatWeeklyHours } from '../../src/utils/hours';
@@ -15,7 +16,7 @@ import { formatCrowdUpdatedAt } from '../../src/utils/time';
 import RateNoteSheet from '../../src/components/RateNoteSheet';
 import LoadingScreen from '../../src/components/LoadingScreen';
 
-const { colors: C, spacing: SPACING, type: TYPE } = THEME;
+const { spacing: SPACING, type: TYPE } = THEME;
 
 const CROWD_NOTES: Record<string, string> = {
   Light: 'Light crowd. Plenty of open tables and quiet seating.',
@@ -28,6 +29,7 @@ export default function CafeProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors: C } = useAppTheme();
 
   const { user } = useAuth();
   const { location } = useLocation();
@@ -183,7 +185,7 @@ export default function CafeProfileScreen() {
           )}
 
           <View style={[styles.heroOverlayRow, { top: insets.top + 8 }]}>
-            <Pressable onPress={handleFavoriteToggle} style={[styles.circleBtn, isFavorite && styles.circleBtnActive]} hitSlop={4}>
+            <Pressable onPress={handleFavoriteToggle} style={[styles.circleBtn, isFavorite && { borderColor: C.accent }]} hitSlop={4}>
               <Heart size={17} strokeWidth={1.7} color={isFavorite ? C.accent700 : C.textMuted} fill={isFavorite ? C.accent700 : 'none'} />
             </Pressable>
           </View>
@@ -304,20 +306,20 @@ export default function CafeProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  mainContainer: { flex: 1, backgroundColor: C.bg },
+  mainContainer: { flex: 1, backgroundColor: COLORS.bg },
   scrollContent: { paddingBottom: 40 },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING.xl,
-    backgroundColor: C.bg,
+    backgroundColor: COLORS.bg,
   },
   heroWrap: {
     position: 'relative',
     width: '100%',
     height: 260,
-    backgroundColor: C.surface,
+    backgroundColor: COLORS.surface,
     padding: 8,
   },
   heroImage: { width: '100%', height: '100%', resizeMode: 'cover' },
@@ -334,13 +336,10 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: C.hairlineStrong,
-    backgroundColor: C.bg,
+    borderColor: COLORS.hairlineStrong,
+    backgroundColor: COLORS.bg,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  circleBtnActive: {
-    borderColor: C.accent,
   },
   body: {
     paddingHorizontal: SPACING.screen,

@@ -1,8 +1,11 @@
 import React from 'react';
 import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
 import { COLORS, RADIUS, SPACING, TYPE } from '../constants/theme';
+import { useAppTheme } from '../context/ThemeContext';
 
-/** Every structural line in the app. Never a border on a card. */
+/** Every structural line in the app. Never a border on a card.
+ * Divider color is a base (theme-invariant) token, so this doesn't need the
+ * theme context — it's the same hairline in coffee or matcha mode. */
 export function Divider({ style }: { style?: ViewStyle }) {
   return <View style={[{ height: Math.max(StyleSheet.hairlineWidth, 1), backgroundColor: COLORS.divider }, style]} />;
 }
@@ -13,15 +16,22 @@ export function Kicker({ children, tone = 'muted', style }: {
   tone?: 'muted' | 'accent' | 'secondary';
   style?: TextStyle;
 }) {
-  const color = tone === 'accent' ? COLORS.accent700 : tone === 'secondary' ? COLORS.textSecondary : COLORS.textMuted;
+  const { colors: C } = useAppTheme();
+  const color = tone === 'accent' ? C.accent700 : tone === 'secondary' ? C.textSecondary : C.textMuted;
   return <Text style={[TYPE.kicker, { color }, style]}>{children}</Text>;
 }
 
 /**
  * Crowd level as ten steps — replaces the old colored crowd pill.
  * Always pair with the numeric label; the meter alone is not accessible.
+ * `color`/`trackColor` let a caller override the filled/unfilled dot colors
+ * for use on a non-default (e.g. tinted) background, where the theme's own
+ * accent700/hairlineStrong might not have enough contrast.
  */
-export function CrowdMeter({ level, size = 9 }: { level: number; size?: number }) {
+export function CrowdMeter({ level, size = 9, color, trackColor }: { level: number; size?: number; color?: string; trackColor?: string }) {
+  const { colors: C } = useAppTheme();
+  const filled = color ?? C.accent700;
+  const unfilled = trackColor ?? C.hairlineStrong;
   const gap = size <= 6 ? 2.5 : 4;
   return (
     <View
@@ -37,8 +47,8 @@ export function CrowdMeter({ level, size = 9 }: { level: number; size?: number }
             height: size,
             borderRadius: size / 2,
             borderWidth: 1,
-            borderColor: i < level ? COLORS.accent700 : COLORS.hairlineStrong,
-            backgroundColor: i < level ? COLORS.accent700 : 'transparent',
+            borderColor: i < level ? filled : unfilled,
+            backgroundColor: i < level ? filled : 'transparent',
           }}
         />
       ))}
@@ -54,6 +64,7 @@ export function OutlineButton({ label, onPress, variant = 'primary', disabled, s
   disabled?: boolean;
   style?: ViewStyle;
 }) {
+  const { colors: C } = useAppTheme();
   const primary = variant === 'primary';
   return (
     <Pressable
@@ -68,14 +79,14 @@ export function OutlineButton({ label, onPress, variant = 'primary', disabled, s
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: SPACING.lg,
-          borderColor: disabled ? COLORS.hairlineStrong : primary ? COLORS.accent : COLORS.hairlineStrong,
-          backgroundColor: pressed && !disabled ? (primary ? COLORS.accent100 : COLORS.surface) : 'transparent',
+          borderColor: disabled ? C.hairlineStrong : primary ? C.accent : C.hairlineStrong,
+          backgroundColor: pressed && !disabled ? (primary ? C.accent100 : C.surface) : 'transparent',
           opacity: disabled ? 0.45 : 1,
         },
         style,
       ]}
     >
-      <Text style={[TYPE.kicker, { fontSize: 13, color: disabled ? COLORS.textLight : primary ? COLORS.accent700 : COLORS.text }]}>
+      <Text style={[TYPE.kicker, { fontSize: 13, color: disabled ? C.textLight : primary ? C.accent700 : C.text }]}>
         {label}
       </Text>
     </Pressable>
@@ -89,6 +100,7 @@ export function Chip({ label, active, onPress, style }: {
   onPress?: () => void;
   style?: ViewStyle;
 }) {
+  const { colors: C } = useAppTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -102,13 +114,13 @@ export function Chip({ label, active, onPress, style }: {
           borderWidth: 1,
           alignItems: 'center',
           justifyContent: 'center',
-          borderColor: active ? COLORS.accent : COLORS.divider,
-          backgroundColor: active ? COLORS.accent100 : pressed ? COLORS.surface : 'transparent',
+          borderColor: active ? C.accent : C.divider,
+          backgroundColor: active ? C.accent100 : pressed ? C.surface : 'transparent',
         },
         style,
       ]}
     >
-      <Text style={[TYPE.kicker, { color: active ? COLORS.accent700 : COLORS.textSecondary }]}>{label}</Text>
+      <Text style={[TYPE.kicker, { color: active ? C.accent700 : C.textSecondary }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -116,6 +128,8 @@ export function Chip({ label, active, onPress, style }: {
 /**
  * The image mat — every café photo goes through this, so photographs read as
  * tipped-in plates rather than banners. `hatch` is the placeholder tile asset.
+ * Border/surface here are base (theme-invariant) tokens — no theme context
+ * needed.
  */
 export function Plate({ size, source, style, children }: {
   size?: number;
