@@ -456,9 +456,16 @@ function calculateScoreLocally(cafe: any, hours: any[], userLat: number, userLon
     }
     const isNowRequired = prefs?.open_now_required ?? prefs?.open_now;
     if (isNowRequired) {
-      const day = new Date().getDay();
-      const openHours = hours.filter((h: any) => h.day_of_week === day);
-      if (openHours.length === 0) excluded = true;
+      // Server clock is UTC; cafés are all Southern California, so this must
+      // read the day/time as they actually are locally — see getNowInCafeTimezone.
+      const { dayOfWeek: day, minutesSinceMidnight: nowMinutes } = getNowInCafeTimezone();
+      const isOpenNow = hours.some((h: any) => {
+        if (h.day_of_week !== day) return false;
+        const open = timeStrToMinutes(h.opening_time);
+        const close = timeStrToMinutes(h.closing_time);
+        return open != null && close != null && nowMinutes >= open && nowMinutes < close;
+      });
+      if (!isOpenNow) excluded = true;
     }
   }
 
@@ -589,15 +596,43 @@ function formatMinutesAsClock(mins: number): string {
   return m === 0 ? `${h12} ${ampm}` : `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
+const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/**
+ * Edge functions run on Deno's server clock, which is UTC — every café in
+ * this app is in Southern California, so `new Date().getDay()/getHours()`
+ * silently used the wrong day/time (e.g. reading 7:13 PM UTC as "now" when
+ * it was actually 12:13 PM in Irvine, making an open café look closed).
+ * This reads the day-of-week and time-of-day as they actually are in the
+ * café's timezone instead.
+ */
+function getNowInCafeTimezone(): { dayOfWeek: number; minutesSinceMidnight: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    weekday: 'short',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  }).formatToParts(new Date());
+
+  let dayOfWeek = 0;
+  let hour = 0;
+  let minute = 0;
+  for (const p of parts) {
+    if (p.type === 'weekday') dayOfWeek = WEEKDAY_INDEX[p.value] ?? 0;
+    if (p.type === 'hour') hour = parseInt(p.value, 10) % 24; // midnight can format as "24"
+    if (p.type === 'minute') minute = parseInt(p.value, 10);
+  }
+  return { dayOfWeek, minutesSinceMidnight: hour * 60 + minute };
+}
+
 /**
  * Mirrors src/utils/hours.ts's open/closed logic (duplicated here since edge
  * functions deploy standalone and can't import from src/). Returns today's
  * open/closed status plus the full week for a "cafe_lookup" hours answer.
  */
 function getCafeHoursSummary(cafeHours: any[]): { todayStatus: string; weekList: string[] } {
-  const now = new Date();
-  const todayIdx = now.getDay();
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const { dayOfWeek: todayIdx, minutesSinceMidnight: nowMinutes } = getNowInCafeTimezone();
 
   const weekList = DAYS_OF_WEEK.map((dayName, idx) => {
     const row = cafeHours.find((h: any) => h.day_of_week === idx && h.opening_time && h.closing_time);
