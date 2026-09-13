@@ -9,10 +9,16 @@ export const UCI_FALLBACK_LOCATION = {
   longitude: -117.8443,
 };
 
+export interface LocationPermissionResult {
+  granted: boolean;
+  latitude?: number;
+  longitude?: number;
+}
+
 interface LocationContextType {
   location: LocationState;
   loading: boolean;
-  requestLocationPermission: () => Promise<void>;
+  requestLocationPermission: () => Promise<LocationPermissionResult>;
 }
 
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
@@ -122,11 +128,15 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const requestLocationPermission = async () => {
+  // Resolves with `granted: true` only when a real (non-fallback) coordinate
+  // was actually obtained — callers that need a trustworthy position for
+  // something like a proximity check (not just "did the OS dialog say yes")
+  // should key off this return value, not just the side-effect state update.
+  const requestLocationPermission = async (): Promise<LocationPermissionResult> => {
     console.log('[Location Debug] Enable pressed');
     setLoading(true);
 
-    const handleWebError = async (err: GeolocationPositionError) => {
+    const handleWebError = async (err: GeolocationPositionError): Promise<LocationPermissionResult> => {
       console.log(`[Location Debug] Phase: browser geolocation, Error code: ${err.code}, message: ${err.message}`);
       console.log('[Location Debug] Phase: state update, Status: using UCI fallback');
 
@@ -151,9 +161,11 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const msg = 'Unable to retrieve location. Continuing with UC Irvine campus fallback.';
         if (typeof window !== 'undefined') window.alert(msg);
       }
+
+      return { granted: false };
     };
 
-    const handleWebSuccess = (pos: GeolocationPosition) => {
+    const handleWebSuccess = (pos: GeolocationPosition): LocationPermissionResult => {
       console.log('[Location Debug] Phase: permission request, Status: granted');
       console.log(
         `[Location Debug] Phase: state update, Success: lat=${pos.coords.latitude}, lon=${pos.coords.longitude}`
@@ -165,6 +177,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         permissionGranted: true,
       });
       setLoading(false);
+      return { granted: true, latitude: pos.coords.latitude, longitude: pos.coords.longitude };
     };
 
     // Web browser handling: navigator.geolocation with high-accuracy to coarse-accuracy fallback
@@ -181,29 +194,32 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (typeof window !== 'undefined') {
           window.alert("Location services aren't available in this browser.");
         }
-        return;
+        return { granted: false };
       }
 
-      // First attempt: High accuracy (GPS)
-      navigator.geolocation.getCurrentPosition(
-        handleWebSuccess,
-        (firstErr) => {
-          console.log(`[Location Debug] Phase: high-accuracy attempt failed (code ${firstErr.code}: ${firstErr.message})`);
-          if (firstErr.code === 2 || firstErr.code === 3) {
-            console.log('[Location Debug] Phase: retrying with coarse accuracy (enableHighAccuracy: false)');
-            // Fallback attempt: Coarse accuracy (IP/Wi-Fi)
-            navigator.geolocation.getCurrentPosition(
-              handleWebSuccess,
-              handleWebError,
-              { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
-            );
-          } else {
-            handleWebError(firstErr);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
-      );
-      return;
+      // navigator.geolocation is callback-based, not promise-based — wrap it
+      // so this function's own promise only resolves once a result is known.
+      return new Promise<LocationPermissionResult>((resolve) => {
+        // First attempt: High accuracy (GPS)
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(handleWebSuccess(pos)),
+          (firstErr) => {
+            console.log(`[Location Debug] Phase: high-accuracy attempt failed (code ${firstErr.code}: ${firstErr.message})`);
+            if (firstErr.code === 2 || firstErr.code === 3) {
+              console.log('[Location Debug] Phase: retrying with coarse accuracy (enableHighAccuracy: false)');
+              // Fallback attempt: Coarse accuracy (IP/Wi-Fi)
+              navigator.geolocation.getCurrentPosition(
+                (pos) => resolve(handleWebSuccess(pos)),
+                (err) => { handleWebError(err).then(resolve); },
+                { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+              );
+            } else {
+              handleWebError(firstErr).then(resolve);
+            }
+          },
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+        );
+      });
     }
 
     // Native Handling (iOS / Android)
@@ -237,6 +253,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             isFallback: false,
             permissionGranted: true,
           });
+          return { granted: true, latitude: currentLoc.coords.latitude, longitude: currentLoc.coords.longitude };
         } else {
           console.log('[Location Debug] Phase: getCurrentPositionAsync (native), Status: position timeout');
           setLocation({
@@ -249,6 +266,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             'Location Timeout',
             "We couldn't determine your location within the time limit. Try again or continue using the UC Irvine fallback."
           );
+          return { granted: false };
         }
       } else {
         console.log('[Location Debug] Phase: state update (native), Status: permission denied');
@@ -262,6 +280,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           'Location Permission Denied',
           'Location permission was denied. Showing cafés near UC Irvine instead.'
         );
+        return { granted: false };
       }
     } catch (err) {
       console.warn('[Location Debug] Phase: native location request error:', err);
@@ -271,6 +290,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isFallback: true,
         permissionGranted: false,
       });
+      return { granted: false };
     } finally {
       setLoading(false);
     }
