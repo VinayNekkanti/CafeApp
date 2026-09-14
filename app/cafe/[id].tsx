@@ -9,7 +9,7 @@ import { getCafes, getCafeHours, getFavorites, submitCafeReview, submitRating, g
 import { Cafe, CafeHours, CafeReview } from '../../src/types';
 import { THEME, COLORS, crowdLabel, crowdLevelNumber } from '../../src/constants/theme';
 import { useAppTheme } from '../../src/context/ThemeContext';
-import { Divider, Kicker, CrowdMeter, OutlineButton } from '../../src/components/classical';
+import { Divider, Kicker, CrowdMeter, OutlineButton, Chip } from '../../src/components/classical';
 import { calculateDistance, formatDistance, estimateWalkingTime, estimateDrivingTime } from '../../src/utils/distance';
 import { getOpenStatus, formatWeeklyHours } from '../../src/utils/hours';
 import { formatCrowdUpdatedAt } from '../../src/utils/time';
@@ -45,6 +45,7 @@ export default function CafeProfileScreen() {
   const [isEmployee, setIsEmployee] = useState(false);
   const [studentCrowd, setStudentCrowd] = useState<{ crowd_level: number; updated_at: string } | null>(null);
   const [crowdReportVisible, setCrowdReportVisible] = useState(false);
+  const [crowdTab, setCrowdTab] = useState<'employee' | 'student'>('employee');
 
   const [reviews, setReviews] = useState<CafeReview[]>([]);
   const [totalReviewCount, setTotalReviewCount] = useState<number>(0);
@@ -171,6 +172,7 @@ export default function CafeProfileScreen() {
   const handleCrowdReportSubmitted = async () => {
     if (!cafe) return;
     setStudentCrowd(await getStudentCrowdStatus(cafe.id));
+    setCrowdTab('student');
     const msg = 'Thanks — your crowd level report was submitted.';
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert('Report Submitted', msg);
@@ -240,21 +242,27 @@ export default function CafeProfileScreen() {
 
           {/* Crowd level */}
           <Kicker>Crowd level</Kicker>
-          <View style={styles.crowdFigureRow}>
-            <Text style={[TYPE.numeral, { color: C.text }]}>{crowdLevel}</Text>
-            <Text style={[TYPE.bodyTight, { color: C.textMuted }]}>of 10 · {crowdWord}</Text>
+          <View style={styles.crowdTabRow}>
+            <Chip label="Employee reported" active={crowdTab === 'employee'} onPress={() => setCrowdTab('employee')} style={{ flex: 1 }} />
+            <Chip label="Student reported" active={crowdTab === 'student'} onPress={() => setCrowdTab('student')} style={{ flex: 1 }} />
           </View>
-          <CrowdMeter level={crowdLevel} size={9} />
-          <Text style={[TYPE.body, { color: C.text, marginTop: SPACING.md }]}>
-            {CROWD_NOTES[crowdWord] || CROWD_NOTES.Light}
-          </Text>
-          {crowdAgo && (
-            <Text style={[TYPE.metaSmall, { color: C.textMuted, marginTop: 8 }]}>Updated {crowdAgo} by café staff</Text>
-          )}
 
-          {studentCrowd ? (
-            <View style={{ marginTop: SPACING.lg }}>
-              <Kicker>Student reported</Kicker>
+          {crowdTab === 'employee' ? (
+            <View style={{ marginTop: SPACING.md }}>
+              <View style={styles.crowdFigureRow}>
+                <Text style={[TYPE.numeral, { color: C.text }]}>{crowdLevel}</Text>
+                <Text style={[TYPE.bodyTight, { color: C.textMuted }]}>of 10 · {crowdWord}</Text>
+              </View>
+              <CrowdMeter level={crowdLevel} size={9} />
+              <Text style={[TYPE.body, { color: C.text, marginTop: SPACING.md }]}>
+                {CROWD_NOTES[crowdWord] || CROWD_NOTES.Light}
+              </Text>
+              {crowdAgo && (
+                <Text style={[TYPE.metaSmall, { color: C.textMuted, marginTop: 8 }]}>{crowdAgo} by café staff</Text>
+              )}
+            </View>
+          ) : studentCrowd ? (
+            <View style={{ marginTop: SPACING.md }}>
               <View style={styles.crowdFigureRow}>
                 <Text style={[TYPE.numeral, { color: C.text }]}>{studentCrowd.crowd_level}</Text>
                 <Text style={[TYPE.bodyTight, { color: C.textMuted }]}>
@@ -262,19 +270,19 @@ export default function CafeProfileScreen() {
                 </Text>
               </View>
               <CrowdMeter level={studentCrowd.crowd_level} size={9} />
+              <Text style={[TYPE.body, { color: C.text, marginTop: SPACING.md }]}>
+                {CROWD_NOTES[crowdLabel(studentCrowd.crowd_level)] || CROWD_NOTES.Light}
+              </Text>
               {formatCrowdUpdatedAt(studentCrowd.updated_at) && (
                 <Text style={[TYPE.metaSmall, { color: C.textMuted, marginTop: 8 }]}>
-                  Updated {formatCrowdUpdatedAt(studentCrowd.updated_at)} by students
+                  {formatCrowdUpdatedAt(studentCrowd.updated_at)} by students
                 </Text>
               )}
             </View>
           ) : (
-            <View style={{ marginTop: SPACING.lg }}>
-              <Kicker>Student reported</Kicker>
-              <Text style={[TYPE.bodyTight, { color: C.textMuted, marginTop: 6 }]}>
-                No recent student reports.
-              </Text>
-            </View>
+            <Text style={[TYPE.bodyTight, { color: C.textMuted, marginTop: SPACING.md }]}>
+              No student reports yet for this café.
+            </Text>
           )}
 
           <Divider style={styles.sectionDivider} />
@@ -427,6 +435,11 @@ const styles = StyleSheet.create({
   sectionDivider: {
     marginTop: 27.6,
     marginBottom: SPACING.lg,
+  },
+  crowdTabRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: SPACING.sm,
   },
   crowdFigureRow: {
     flexDirection: 'row',
