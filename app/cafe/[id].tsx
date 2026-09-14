@@ -292,7 +292,6 @@ export default function CafeProfileScreen() {
           <Text style={[TYPE.sectionValue, { color: C.text, marginTop: 6 }]}>
             {cafe.wifi_available ? cafe.wifi_quality || 'Available' : 'None'}
           </Text>
-          <Text style={[TYPE.metaSmall, { color: C.textMuted }]}>rated by administrators</Text>
 
           <Divider style={styles.sectionDivider} />
 
