@@ -250,7 +250,7 @@ export default function ExploreScreen() {
             </Plate>
             <View>
               <Text style={[TYPE.screenTitle, { fontSize: 28, color: C.text }]}>FindMyCafe</Text>
-              <Kicker style={{ marginTop: 5, fontSize: 10.5 }}>Study spots · UC Irvine</Kicker>
+              <Kicker style={{ marginTop: 5, fontSize: 10.5 }}>Find a Cafe Near You</Kicker>
             </View>
           </View>
 

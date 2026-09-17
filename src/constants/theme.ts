@@ -83,6 +83,7 @@ export const FONTS = {
   body: 'Lora_400Regular',
   bodyItalic: 'Lora_400Regular_Italic',
   bodyMedium: 'Lora_500Medium',
+  bodyBold: 'Lora_700Bold',
 } as const;
 
 const tnum = { fontVariant: ['tabular-nums' as const] };
