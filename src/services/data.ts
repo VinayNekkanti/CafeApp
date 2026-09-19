@@ -371,3 +371,60 @@ export async function submitEmployeeCrowdLevel(newLevel: number): Promise<{ succ
 
   return data;
 }
+
+/**
+ * Fetch the aggregated student-reported crowd status for a café (average of
+ * reports from the last 2 hours). Kept fully separate from the
+ * employee-reported current_crowd_level — see v_student_crowd_status.
+ */
+export async function getStudentCrowdStatus(cafeId: string): Promise<{ crowd_level: number; updated_at: string } | null> {
+  const { data, error } = await supabase
+    .from('v_student_crowd_status')
+    .select('student_crowd_level, student_crowd_updated_at')
+    .eq('cafe_id', cafeId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn(`Error fetching student crowd status for cafe ${cafeId}:`, error.message);
+    return null;
+  }
+
+  if (!data) return null;
+
+  return {
+    crowd_level: data.student_crowd_level,
+    updated_at: data.student_crowd_updated_at,
+  };
+}
+
+/**
+ * Submit a student crowd level report (1–10) for a café. Requires the user's
+ * current coordinates — the server-side RPC re-verifies they're within 200m
+ * of the café and enforces the once-per-café-per-day limit, so a rejection
+ * here (wrong distance, already reported today, employee account) surfaces
+ * as a thrown Error with a message safe to show the user directly.
+ */
+export async function submitStudentCrowdReport(
+  cafeId: string,
+  newLevel: number,
+  userLat: number,
+  userLon: number
+): Promise<{ success: boolean; cafe_name: string; crowd_level: number }> {
+  if (newLevel < 1 || newLevel > 10) {
+    throw new Error('Crowd level must be between 1 and 10.');
+  }
+
+  const { data, error } = await supabase.rpc('submit_student_crowd_report', {
+    p_cafe_id: cafeId,
+    p_level: Math.round(newLevel),
+    p_lat: userLat,
+    p_lon: userLon,
+  });
+
+  if (error) {
+    console.error('[Student Crowd Report] RPC submit_student_crowd_report failed:', error.message);
+    throw new Error(error.message || 'Unable to submit crowd level. Please try again.');
+  }
+
+  return data;
+}

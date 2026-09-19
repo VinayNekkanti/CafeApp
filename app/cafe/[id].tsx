@@ -5,15 +5,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Heart } from 'lucide-react-native';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocation } from '../../src/context/LocationContext';
-import { getCafes, getCafeHours, getFavorites, submitCafeReview, submitRating, getCafeReviews, toggleFavorite } from '../../src/services/data';
+import { getCafes, getCafeHours, getFavorites, submitCafeReview, submitRating, getCafeReviews, toggleFavorite, getEmployeeAssignment, getStudentCrowdStatus } from '../../src/services/data';
 import { Cafe, CafeHours, CafeReview } from '../../src/types';
 import { THEME, COLORS, crowdLabel, crowdLevelNumber } from '../../src/constants/theme';
 import { useAppTheme } from '../../src/context/ThemeContext';
-import { Divider, Kicker, CrowdMeter, OutlineButton } from '../../src/components/classical';
+import { Divider, Kicker, CrowdMeter, OutlineButton, Chip } from '../../src/components/classical';
 import { calculateDistance, formatDistance, estimateWalkingTime, estimateDrivingTime } from '../../src/utils/distance';
 import { getOpenStatus, formatWeeklyHours } from '../../src/utils/hours';
 import { formatCrowdUpdatedAt } from '../../src/utils/time';
 import RateNoteSheet from '../../src/components/RateNoteSheet';
+import CrowdReportSheet from '../../src/components/CrowdReportSheet';
 import LoadingScreen from '../../src/components/LoadingScreen';
 
 const { spacing: SPACING, type: TYPE } = THEME;
@@ -41,6 +42,10 @@ export default function CafeProfileScreen() {
   const [sheetMode, setSheetMode] = useState<'rate' | 'note' | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [isEmployee, setIsEmployee] = useState(false);
+  const [studentCrowd, setStudentCrowd] = useState<{ crowd_level: number; updated_at: string } | null>(null);
+  const [crowdReportVisible, setCrowdReportVisible] = useState(false);
+  const [crowdTab, setCrowdTab] = useState<'employee' | 'student'>('employee');
 
   const [reviews, setReviews] = useState<CafeReview[]>([]);
   const [totalReviewCount, setTotalReviewCount] = useState<number>(0);
@@ -74,12 +79,20 @@ export default function CafeProfileScreen() {
         const cafeHours = await getCafeHours(id);
         setHours(cafeHours);
         await fetchReviewsData(id);
+        setStudentCrowd(await getStudentCrowdStatus(id));
       }
 
       if (user) {
         const favs = await getFavorites(user.id);
         setFavorites(favs);
         setIsFavorite(favs.includes(id));
+
+        // "Report Crowd Level" is student-facing only — employees have their
+        // own dedicated reporting flow in /employee/dashboard.
+        const employeeAssignment = await getEmployeeAssignment();
+        setIsEmployee(!!employeeAssignment);
+      } else {
+        setIsEmployee(false);
       }
     } catch (err) {
       console.error('Error fetching cafe profile:', err);
@@ -148,6 +161,23 @@ export default function CafeProfileScreen() {
     router.push(`/(tabs)?routeCafeId=${cafe.id}`);
   };
 
+  const handleReportCrowdPress = () => {
+    if (!user) {
+      promptSignIn('You need to be signed in to report a crowd level.');
+      return;
+    }
+    setCrowdReportVisible(true);
+  };
+
+  const handleCrowdReportSubmitted = async () => {
+    if (!cafe) return;
+    setStudentCrowd(await getStudentCrowdStatus(cafe.id));
+    setCrowdTab('student');
+    const msg = 'Thanks — your crowd level report was submitted.';
+    if (Platform.OS === 'web') window.alert(msg);
+    else Alert.alert('Report Submitted', msg);
+  };
+
   if (loading) {
     return <LoadingScreen message="Loading café profile details..." />;
   }
@@ -212,16 +242,47 @@ export default function CafeProfileScreen() {
 
           {/* Crowd level */}
           <Kicker>Crowd level</Kicker>
-          <View style={styles.crowdFigureRow}>
-            <Text style={[TYPE.numeral, { color: C.text }]}>{crowdLevel}</Text>
-            <Text style={[TYPE.bodyTight, { color: C.textMuted }]}>of 10 · {crowdWord}</Text>
+          <View style={styles.crowdTabRow}>
+            <Chip label="Employee reported" active={crowdTab === 'employee'} onPress={() => setCrowdTab('employee')} style={{ flex: 1 }} />
+            <Chip label="Student reported" active={crowdTab === 'student'} onPress={() => setCrowdTab('student')} style={{ flex: 1 }} />
           </View>
-          <CrowdMeter level={crowdLevel} size={9} />
-          <Text style={[TYPE.body, { color: C.text, marginTop: SPACING.md }]}>
-            {CROWD_NOTES[crowdWord] || CROWD_NOTES.Light}
-          </Text>
-          {crowdAgo && (
-            <Text style={[TYPE.metaSmall, { color: C.textMuted, marginTop: 8 }]}>Updated {crowdAgo} by café staff</Text>
+
+          {crowdTab === 'employee' ? (
+            <View style={{ marginTop: SPACING.md }}>
+              <View style={styles.crowdFigureRow}>
+                <Text style={[TYPE.numeral, { color: C.text }]}>{crowdLevel}</Text>
+                <Text style={[TYPE.bodyTight, { color: C.textMuted }]}>of 10 · {crowdWord}</Text>
+              </View>
+              <CrowdMeter level={crowdLevel} size={9} />
+              <Text style={[TYPE.body, { color: C.text, marginTop: SPACING.md }]}>
+                {CROWD_NOTES[crowdWord] || CROWD_NOTES.Light}
+              </Text>
+              {crowdAgo && (
+                <Text style={[TYPE.metaSmall, { color: C.textMuted, marginTop: 8 }]}>{crowdAgo} by café staff</Text>
+              )}
+            </View>
+          ) : studentCrowd ? (
+            <View style={{ marginTop: SPACING.md }}>
+              <View style={styles.crowdFigureRow}>
+                <Text style={[TYPE.numeral, { color: C.text }]}>{studentCrowd.crowd_level}</Text>
+                <Text style={[TYPE.bodyTight, { color: C.textMuted }]}>
+                  of 10 · {crowdLabel(studentCrowd.crowd_level)}
+                </Text>
+              </View>
+              <CrowdMeter level={studentCrowd.crowd_level} size={9} />
+              <Text style={[TYPE.body, { color: C.text, marginTop: SPACING.md }]}>
+                {CROWD_NOTES[crowdLabel(studentCrowd.crowd_level)] || CROWD_NOTES.Light}
+              </Text>
+              {formatCrowdUpdatedAt(studentCrowd.updated_at) && (
+                <Text style={[TYPE.metaSmall, { color: C.textMuted, marginTop: 8 }]}>
+                  {formatCrowdUpdatedAt(studentCrowd.updated_at)} by students
+                </Text>
+              )}
+            </View>
+          ) : (
+            <Text style={[TYPE.bodyTight, { color: C.textMuted, marginTop: SPACING.md }]}>
+              No student reports yet for this café.
+            </Text>
           )}
 
           <Divider style={styles.sectionDivider} />
@@ -231,7 +292,6 @@ export default function CafeProfileScreen() {
           <Text style={[TYPE.sectionValue, { color: C.text, marginTop: 6 }]}>
             {cafe.wifi_available ? cafe.wifi_quality || 'Available' : 'None'}
           </Text>
-          <Text style={[TYPE.metaSmall, { color: C.textMuted }]}>rated by administrators</Text>
 
           <Divider style={styles.sectionDivider} />
 
@@ -288,6 +348,17 @@ export default function CafeProfileScreen() {
             <OutlineButton label="Get Directions" onPress={openDirections} style={{ flex: 1 }} />
             <OutlineButton label="Rate" variant="secondary" onPress={() => openSheet('rate')} style={styles.rateBtn} />
           </View>
+
+          {!isEmployee && (
+            <View style={styles.actionsRow}>
+              <OutlineButton
+                label="Report Crowd Level"
+                variant="secondary"
+                onPress={handleReportCrowdPress}
+                style={{ flex: 1 }}
+              />
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -300,6 +371,16 @@ export default function CafeProfileScreen() {
         onClose={() => setSheetMode(null)}
         onSubmitRating={handleSubmitRating}
         onSubmitNote={handleSubmitNote}
+      />
+
+      <CrowdReportSheet
+        visible={crowdReportVisible}
+        cafeId={cafe.id}
+        cafeName={cafe.name}
+        cafeLatitude={cafe.latitude}
+        cafeLongitude={cafe.longitude}
+        onClose={() => setCrowdReportVisible(false)}
+        onSubmitted={handleCrowdReportSubmitted}
       />
     </View>
   );
@@ -353,6 +434,11 @@ const styles = StyleSheet.create({
   sectionDivider: {
     marginTop: 27.6,
     marginBottom: SPACING.lg,
+  },
+  crowdTabRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: SPACING.sm,
   },
   crowdFigureRow: {
     flexDirection: 'row',
