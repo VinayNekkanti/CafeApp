@@ -64,13 +64,15 @@ serve(async (req) => {
     const extractSystemPrompt = `You are an AI Assistant for people seeking café spots. The most common use case is studying, but users may also ask for cafés to just visit.
 Classify the user message into one of these intents:
 - "general_chat": Casual greetings or non-recommendation remarks (e.g. "hi", "hello", "thanks", "what can you do?")
-- "recommend_cafe": A new request for café recommendations
+- "recommend_cafe": A new request for café recommendations (the user has NOT named a specific café)
+- "cafe_lookup": The user names a SPECIFIC café (by name) and asks about it — e.g. its distance from them, its hours, how crowded/busy/full it currently is, or when its crowd/seating info was last updated. Any question about a named café's seating availability, occupancy, or "how busy is X" is "cafe_lookup", not "recommend_cafe".
 - "modify_recommendation": Modifying a prior recommendation (e.g. "only give me one", "make it closer", "somewhere less crowded")
 - "clarification": Asking for details or clarifying a prior answer
 
 Return JSON strictly matching this schema:
 {
-  "intent": "general_chat" | "recommend_cafe" | "modify_recommendation" | "clarification",
+  "intent": "general_chat" | "recommend_cafe" | "cafe_lookup" | "modify_recommendation" | "clarification",
+  "cafe_name_reference": string or null (ONLY for "cafe_lookup" — the café name exactly as the user referred to it, verbatim from their message. Null for every other intent.),
   "max_results": integer or null (the exact number the user asks for — "give me one" -> 1, "show two" -> 2, "show me 5" -> 5, "as many as you can" -> 999. Default null when unspecified.),
   "wifi_required": boolean or null,
   "max_distance_miles": number or null (e.g. "within 2 miles" -> 2),
@@ -82,7 +84,8 @@ Return JSON strictly matching this schema:
 
 Rules:
 1. Greetings ("hi", "hello", "thanks") MUST have intent = "general_chat" and max_results = 0.
-2. If previous preferences exist (${JSON.stringify(lastPreferences || {})}), preserve them unless the user explicitly overrides them.`;
+2. If previous preferences exist (${JSON.stringify(lastPreferences || {})}), preserve them unless the user explicitly overrides them.
+3. Never guess or invent a café name for "cafe_name_reference" — only extract one that the user actually typed.`;
 
     let preferences: any = { intent: 'recommend_cafe', max_results: 3 };
     let preferencesExtracted = false;
@@ -161,6 +164,116 @@ Rules:
           recommendations: [],
           explanation: "Hi! Tell me what kind of study spot you're looking for — for example, quiet, close by, good Wi-Fi, or not too crowded.",
           is_exact_match: true,
+          ai_mode: 'OPENAI',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Handle a lookup about one specific, named café (distance / hours / seating
+    // availability / when that seating score was last updated). Kept fully
+    // separate from the recommend_cafe scoring pipeline below — this is a
+    // single-café facts answer, not a ranked list.
+    if (preferences.intent === 'cafe_lookup') {
+      const hasUserLocation = location?.latitude != null && location?.longitude != null;
+      const matchedCafe = findCafeByName(preferences.cafe_name_reference || query, cafes);
+
+      let explanation = '';
+      let recommendations: any[] = [];
+      let lookupExactMatch = false;
+
+      if (!matchedCafe) {
+        explanation = preferences.cafe_name_reference
+          ? `I couldn't find a café called "${preferences.cafe_name_reference}" in our database. Could you check the spelling, or ask me for recommendations instead?`
+          : `I couldn't tell which café you meant. Could you name the café you're asking about?`;
+      } else {
+        lookupExactMatch = true;
+        recommendations = [matchedCafe];
+        const cafeHours = hoursMap[matchedCafe.id] || [];
+        const { todayStatus, weekList } = getCafeHoursSummary(cafeHours);
+        const distanceMiles = hasUserLocation
+          ? getDistance(userLat, userLon, matchedCafe.latitude, matchedCafe.longitude)
+          : null;
+
+        const facts: Record<string, any> = {
+          name: matchedCafe.name,
+          address: matchedCafe.address,
+          hours_today: todayStatus,
+          hours_full_week: weekList,
+          seating_availability_score: matchedCafe.current_crowd_level != null ? `${matchedCafe.current_crowd_level}/10` : 'not yet reported',
+          seating_availability_last_updated: formatCrowdAge(matchedCafe.crowd_updated_at),
+        };
+        if (distanceMiles != null) {
+          facts.distance_from_user_miles = Math.round(distanceMiles * 10) / 10;
+        } else {
+          facts.distance_from_user = 'unavailable — user location was not provided, so do not mention or estimate a distance';
+        }
+
+        const lookupPrompt = `You are the Café Study Spot Assistant for UC Irvine students. A user asked about one specific café.
+
+User query: "${query}"
+Café facts (verified from the database): ${JSON.stringify(facts)}
+
+Rules:
+1. ONLY state the verified facts provided above. Never invent hours, distance, or a seating score that isn't given.
+2. If distance_from_user_miles is missing, do not mention distance at all — do not apologize for it either, just omit it.
+3. Directly answer what the user asked; you don't need to restate every fact if they only asked about one thing, but keep the answer accurate.
+4. If seating_availability_last_updated shows no recent update, or one more than 30 minutes old, briefly note that the seating status may be outdated.
+5. Keep the answer concise (under 120 tokens), plain and conversational — no markdown headers.`;
+
+        try {
+          const lookupRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openAiApiKey}`,
+            },
+            body: JSON.stringify({
+              model,
+              reasoning_effort: 'low',
+              max_completion_tokens: 400,
+              messages: [
+                { role: 'system', content: 'You answer questions about one specific cafe using database facts only.' },
+                { role: 'user', content: lookupPrompt },
+              ],
+            }),
+          });
+
+          if (lookupRes.ok) {
+            const lookupData = await lookupRes.json();
+            explanation = lookupData.choices?.[0]?.message?.content || '';
+            if (!explanation) {
+              console.warn('Cafe lookup generation returned empty content:', JSON.stringify(lookupData).slice(0, 800));
+            }
+          } else {
+            console.warn('Cafe lookup generation failed:', lookupRes.status, await lookupRes.text());
+          }
+        } catch (e) {
+          console.warn('Cafe lookup generation API error:', e);
+        }
+
+        if (!explanation) {
+          // Deterministic fallback so a flaky LLM call never breaks this feature.
+          const parts = [`**${matchedCafe.name}**`, todayStatus, `Seating availability: ${facts.seating_availability_score} (${facts.seating_availability_last_updated})`];
+          if (distanceMiles != null) parts.push(`About ${Math.round(distanceMiles * 10) / 10} miles from you`);
+          explanation = parts.join(' — ');
+        }
+      }
+
+      console.log('[AI] mode=OPENAI payload=', JSON.stringify({
+        intent: 'cafe_lookup',
+        cafe_name_reference: preferences.cafe_name_reference,
+        matched_cafe_id: matchedCafe?.id ?? null,
+        has_user_location: hasUserLocation,
+        ai_mode: 'OPENAI',
+      }));
+
+      return new Response(
+        JSON.stringify({
+          preferences,
+          recommendations,
+          explanation,
+          is_exact_match: lookupExactMatch,
           ai_mode: 'OPENAI',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -343,9 +456,16 @@ function calculateScoreLocally(cafe: any, hours: any[], userLat: number, userLon
     }
     const isNowRequired = prefs?.open_now_required ?? prefs?.open_now;
     if (isNowRequired) {
-      const day = new Date().getDay();
-      const openHours = hours.filter((h: any) => h.day_of_week === day);
-      if (openHours.length === 0) excluded = true;
+      // Server clock is UTC; cafés are all Southern California, so this must
+      // read the day/time as they actually are locally — see getNowInCafeTimezone.
+      const { dayOfWeek: day, minutesSinceMidnight: nowMinutes } = getNowInCafeTimezone();
+      const isOpenNow = hours.some((h: any) => {
+        if (h.day_of_week !== day) return false;
+        const open = timeStrToMinutes(h.opening_time);
+        const close = timeStrToMinutes(h.closing_time);
+        return open != null && close != null && nowMinutes >= open && nowMinutes < close;
+      });
+      if (!isOpenNow) excluded = true;
     }
   }
 
@@ -414,6 +534,129 @@ function formatCrowdAge(updatedAt?: string | null): string {
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `updated ${diffHours}h ago`;
   return `updated ${Math.floor(diffHours / 24)}d ago`;
+}
+
+function normalizeName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Matches free-text café references (e.g. from chat, possibly misspelled or
+ * partial) against the real café list. Exact match, then substring either
+ * direction, then token-overlap scoring — deliberately conservative (0.5
+ * overlap floor) so a vague/unrelated reference returns null rather than a
+ * wrong café's facts being stated as fact.
+ */
+function findCafeByName(reference: string, cafes: any[]): any | null {
+  if (!reference) return null;
+  const norm = normalizeName(reference);
+  if (!norm) return null;
+
+  const exact = cafes.find((c: any) => normalizeName(c.name) === norm);
+  if (exact) return exact;
+
+  const substring = cafes.find((c: any) => {
+    const cn = normalizeName(c.name);
+    return cn.includes(norm) || norm.includes(cn);
+  });
+  if (substring) return substring;
+
+  const refTokens = new Set(norm.split(' ').filter(Boolean));
+  let best: any = null;
+  let bestScore = 0;
+  cafes.forEach((c: any) => {
+    const cnTokens = normalizeName(c.name).split(' ').filter(Boolean);
+    if (cnTokens.length === 0) return;
+    const overlap = cnTokens.filter((t) => refTokens.has(t)).length;
+    const score = overlap / cnTokens.length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  });
+  return bestScore >= 0.5 ? best : null;
+}
+
+const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function timeStrToMinutes(t?: string | null): number | null {
+  if (!t || typeof t !== 'string') return null;
+  const [hStr, mStr] = t.split(':');
+  const h = parseInt(hStr ?? '', 10);
+  const m = parseInt(mStr ?? '0', 10);
+  if (isNaN(h)) return null;
+  return h * 60 + (isNaN(m) ? 0 : m);
+}
+
+function formatMinutesAsClock(mins: number): string {
+  const h24 = Math.floor(mins / 60);
+  const m = mins % 60;
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return m === 0 ? `${h12} ${ampm}` : `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/**
+ * Edge functions run on Deno's server clock, which is UTC — every café in
+ * this app is in Southern California, so `new Date().getDay()/getHours()`
+ * silently used the wrong day/time (e.g. reading 7:13 PM UTC as "now" when
+ * it was actually 12:13 PM in Irvine, making an open café look closed).
+ * This reads the day-of-week and time-of-day as they actually are in the
+ * café's timezone instead.
+ */
+function getNowInCafeTimezone(): { dayOfWeek: number; minutesSinceMidnight: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    weekday: 'short',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  }).formatToParts(new Date());
+
+  let dayOfWeek = 0;
+  let hour = 0;
+  let minute = 0;
+  for (const p of parts) {
+    if (p.type === 'weekday') dayOfWeek = WEEKDAY_INDEX[p.value] ?? 0;
+    if (p.type === 'hour') hour = parseInt(p.value, 10) % 24; // midnight can format as "24"
+    if (p.type === 'minute') minute = parseInt(p.value, 10);
+  }
+  return { dayOfWeek, minutesSinceMidnight: hour * 60 + minute };
+}
+
+/**
+ * Mirrors src/utils/hours.ts's open/closed logic (duplicated here since edge
+ * functions deploy standalone and can't import from src/). Returns today's
+ * open/closed status plus the full week for a "cafe_lookup" hours answer.
+ */
+function getCafeHoursSummary(cafeHours: any[]): { todayStatus: string; weekList: string[] } {
+  const { dayOfWeek: todayIdx, minutesSinceMidnight: nowMinutes } = getNowInCafeTimezone();
+
+  const weekList = DAYS_OF_WEEK.map((dayName, idx) => {
+    const row = cafeHours.find((h: any) => h.day_of_week === idx && h.opening_time && h.closing_time);
+    const open = row ? timeStrToMinutes(row.opening_time) : null;
+    const close = row ? timeStrToMinutes(row.closing_time) : null;
+    if (open == null || close == null) return `${dayName}: Closed`;
+    return `${dayName}: ${formatMinutesAsClock(open)} - ${formatMinutesAsClock(close)}`;
+  });
+
+  const todayRow = cafeHours.find((h: any) => h.day_of_week === todayIdx && h.opening_time && h.closing_time);
+  let todayStatus = 'Closed today';
+  const openMin = todayRow ? timeStrToMinutes(todayRow.opening_time) : null;
+  const closeMin = todayRow ? timeStrToMinutes(todayRow.closing_time) : null;
+  if (openMin != null && closeMin != null) {
+    if (nowMinutes >= openMin && nowMinutes < closeMin) {
+      todayStatus = `Open now, closes at ${formatMinutesAsClock(closeMin)}`;
+    } else if (nowMinutes < openMin) {
+      todayStatus = `Closed now, opens at ${formatMinutesAsClock(openMin)} today`;
+    } else {
+      todayStatus = `Closed now — was open ${formatMinutesAsClock(openMin)}-${formatMinutesAsClock(closeMin)} today`;
+    }
+  }
+
+  return { todayStatus, weekList };
 }
 
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
